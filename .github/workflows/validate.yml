@@ -1,0 +1,179 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TERRAFORM_VERSION: 1.16.4
+  TFLINT_VERSION: v0.64.0
+  TERRAGRUNT_VERSION: v1.1.6
+  CFN_LINT_VERSION: 1.57.0
+  BICEP_VERSION: v0.47.16
+  # Azure/bicep publishes no checksum file; this is the release asset digest
+  # GitHub reports for bicep-linux-x64 v0.47.16.
+  BICEP_SHA256: 64c345a58e0c3e48b1bc98a4e62d6b3adb1d238281297de3400aeafb2697aa5a
+  # shellcheck from PyPI rather than the release tarball: the tarball is
+  # .tar.xz, and the self hosted runner image has no xz. 0.11.0.1 ships
+  # shellcheck 0.11.0.
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+  GITLEAKS_VERSION: 8.30.1
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  terraform:
+    name: Terraform fmt, validate, test and tflint
+    # Jobs may run on self hosted runners, so code from forks never runs here.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: validate, test and lint every Terraform root
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for dir in $(find aws azure gcp -name '*.tf' -not -path '*/.terraform/*' -not -path '*/.terragrunt-cache/*' -exec dirname {} \; 2>/dev/null | sort -u); do
+            echo "::group::$dir"
+            cloud="${dir%%/*}"
+            config="$GITHUB_WORKSPACE/$cloud/terraform/.tflint.hcl"
+            (
+              cd "$dir"
+              terraform init -backend=false -input=false -no-color
+              terraform validate -no-color
+              if [ -d tests ]; then terraform test -no-color; fi
+              if [ -f "$config" ]; then
+                tflint --init --config="$config"
+                tflint --config="$config" --format compact
+              fi
+            ) || { echo "::error::$dir failed"; failed=1; }
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  templates:
+    name: Terragrunt, CloudFormation, Bicep and shell
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install tools, verifying checksums
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin"
+          cd "$RUNNER_TEMP"
+          base="https://github.com/gruntwork-io/terragrunt/releases/download/${TERRAGRUNT_VERSION}"
+          curl -fsSLO "$base/terragrunt_linux_amd64"
+          curl -fsSLO "$base/SHA256SUMS"
+          grep ' terragrunt_linux_amd64$' SHA256SUMS | sha256sum -c -
+          curl -fsSLO "https://github.com/Azure/bicep/releases/download/${BICEP_VERSION}/bicep-linux-x64"
+          echo "${BICEP_SHA256}  bicep-linux-x64" | sha256sum -c -
+          install -m 0755 terragrunt_linux_amd64 "$HOME/bin/terragrunt"
+          install -m 0755 bicep-linux-x64 "$HOME/bin/bicep"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          python -m pip install --quiet "cfn-lint==${CFN_LINT_VERSION}" "shellcheck-py==${SHELLCHECK_PY_VERSION}"
+
+      - name: Terragrunt (default module source)
+        working-directory: aws/terragrunt
+        run: |
+          set -euo pipefail
+          terragrunt hcl fmt --check
+          terragrunt hcl validate
+          for dir in single-account keyless; do
+            (cd "$dir" && terragrunt validate --non-interactive)
+          done
+
+      - name: CloudFormation
+        run: |
+          set -euo pipefail
+          cfn-lint aws/cloudformation/*.yaml
+          python scripts/sync-stackset.py --check
+          python scripts/check-policy-drift.py
+
+      - name: Bicep
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/bicep"
+          mkdir -p "$out"
+          for f in $(find azure -name '*.bicep'); do
+            echo "bicep lint and build $f"
+            bicep lint "$f"
+            bicep build "$f" --outdir "$out"
+          done
+          for f in $(find azure -name '*.bicepparam'); do
+            echo "bicep build-params $f"
+            bicep build-params "$f" --outfile "$out/$(basename "$f").json"
+          done
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 shellcheck
+
+  scans:
+    name: Secrets, client data and style
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: gitleaks over the whole history
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --verbose .
+
+      - name: Client data (account ids, GUIDs, emails, customer names)
+        env:
+          CLIENT_DATA_HMAC_KEY: ${{ secrets.CLIENT_DATA_HMAC_KEY }}
+        run: python scripts/check-client-data.py
+
+      - name: Style (no em dash, no filler words)
+        run: python scripts/check-style.py

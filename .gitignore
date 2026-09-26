@@ -1,0 +1,40 @@
+# Terraform and Terragrunt working files
+.terraform/
+.terraform.lock.hcl
+.terragrunt-cache/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Variable files hold account specific values. Only the examples are tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Bicep and CloudFormation build output
+*.compiled.json
+azure/bicep/**/*.json
+!azure/bicep/bicepconfig.json
+
+# Credentials that must never be committed
+*.pem
+*-key.json
+*keyfile*.json
+xplorr-key.json
+xplorr-credentials.json
+xplorr-connect-form.json
+
+# Local tooling
+.venv/
+venv/
+__pycache__/
+.DS_Store

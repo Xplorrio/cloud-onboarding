@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+project_id         = "my-project-id"
+billing_dataset_id = "billing_export"
+billing_account_id = "000000-000000-000000"
+
+# Only used when this example creates the dataset. An existing dataset's real
+# location is read from BigQuery.
+bigquery_location = "US"
+
+# Organization or folder grants are OFF by default. Xplorr currently reads
+# only the connected project, so these give it nothing today. To turn them on
+# (needs Organization Administrator, or Folder IAM Admin on each folder):
+# enable_org_level_grants = true
+# organization_id         = "000000000000"
+# or, instead of the whole organization:
+# folder_ids = ["111111111111", "222222222222"]

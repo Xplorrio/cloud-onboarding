@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+project_id         = "my-project-id"
+billing_dataset_id = "billing_export"
+
+# Only used when create_billing_dataset = true. An existing dataset's real
+# location is read from BigQuery.
+bigquery_location = "US"
+
+# Set true if the dataset does not exist yet. Then turn the export on in the
+# console (Billing > Billing export > BigQuery export).
+create_billing_dataset = false
+
+# Optional. The exact table, once the export has created it. Leave unset to
+# let Xplorr match gcp_billing_export_v1_* in the dataset.
+# billing_table = "gcp_billing_export_v1_000000_000000_000000"
+
+# Optional. Grants Billing Account Viewer on the billing account.
+# billing_account_id = "000000-000000-000000"

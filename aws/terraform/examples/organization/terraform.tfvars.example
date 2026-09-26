@@ -1,0 +1,6 @@
+region    = "us-east-1"
+role_name = "xplorr-readonly"
+# Optional. Leave empty for no external ID, or paste a value from: openssl rand -hex 16
+iam_external_id     = ""
+member_a_account_id = "222222222222"
+member_b_account_id = "333333333333"

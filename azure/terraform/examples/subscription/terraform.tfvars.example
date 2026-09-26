@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and replace the placeholders.
+subscription_ids = [
+  "00000000-0000-0000-0000-000000000000",
+]
+
+trust_mode   = "customer_principal"
+display_name = "xplorr-reader"
+role_names   = ["Reader", "Cost Management Reader"]
+
+# Optional, feature specific roles
+enable_carbon_optimization_reader = false
+enable_reservations_reader        = false
+enable_savings_plan_reader        = false
+focus_export_scopes = [
+  # "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.Storage/storageAccounts/stexample",
+]
+
+# Leave false: create the secret in the portal so it never reaches the state.
+create_client_secret = false

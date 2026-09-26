@@ -1,0 +1,557 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Xplorr read-only access for every member account of an AWS Organization.
+  Deploy in the management account, after role.yaml has been deployed there
+  with AssumableOrganizationId set. Creates a service managed StackSet
+  that creates the Xplorr role, from role.yaml, in every member account of the
+  chosen organizational units, including accounts added later. In the
+  customer_principal trust mode every member role trusts the IAM user role.yaml
+  created in the management account. Source: https://github.com/Xplorrio/cloud-onboarding
+
+Parameters:
+  TrustMode:
+    Type: String
+    Default: customer_principal
+    AllowedValues:
+      - customer_principal
+      - xplorr_principal
+    Description: >-
+      customer_principal (works today): every member role trusts the IAM user
+      that role.yaml created in the management account. xplorr_principal requires
+      Xplorr keyless onboarding (coming soon): every role trusts Xplorr roles
+      named xplorr-* in Xplorr's AWS account.
+  IamExternalId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[A-Za-z0-9+=,.@:/_-]{2,1224}$"
+    Description: >-
+      The External ID field in Xplorr, the same in every account. Required for
+      xplorr_principal, where Xplorr will generate it for your organization.
+      Optional for customer_principal; generate one with openssl rand -hex 16.
+  UserName:
+    Type: String
+    Default: xplorr-assumer
+    AllowedPattern: "^[a-z0-9+=,.@_-]{1,64}$"
+    ConstraintDescription: 1 to 64 lowercase characters from a-z, 0-9 and +=,.@_-
+    Description: >-
+      customer_principal only. Name of the IAM user role.yaml created in this
+      (management) account. Every member role trusts it.
+  XplorrAccountId:
+    Type: String
+    Default: "732121667940"
+    AllowedPattern: "^[0-9]{12}$"
+    Description: xplorr_principal only. The Xplorr AWS account every role trusts.
+  RoleName:
+    Type: String
+    Default: xplorr-readonly
+    AllowedPattern: "^[a-z0-9+=,.@_-]{1,64}$"
+    ConstraintDescription: 1 to 64 lowercase characters from a-z, 0-9 and +=,.@_-
+    Description: Name of the role in every account. Enter it in the Role name field in Xplorr.
+  Region:
+    Type: String
+    Default: us-east-1
+    AllowedPattern: "^[a-z]{2}(-[a-z]+)+-[0-9]$"
+    ConstraintDescription: an AWS region such as us-east-1
+    Description: >-
+      Region the member stacks are created in (IAM is global, so one is enough),
+      and the value for the Region field in Xplorr.
+  AttachReadOnlyAccess:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Also attach the AWS managed ReadOnlyAccess policy in every account. Not
+      needed, and it can read data such as S3 objects and DynamoDB items.
+  EnableAuditLog:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Grant cloudtrail:LookupEvents for anomaly root cause analysis.
+  OrganizationalUnitIds:
+    Type: CommaDelimitedList
+    Description: >-
+      Organizational units to deploy to, for example ou-abcd-11111111. Use the
+      root id (r-abcd) for every account in the organization.
+
+Rules:
+  XplorrPrincipalNeedsIamExternalId:
+    RuleCondition: !Equals [!Ref TrustMode, xplorr_principal]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref IamExternalId, ""]]
+        AssertDescription: IamExternalId is required when TrustMode is xplorr_principal.
+
+Conditions:
+  IsCustomerPrincipal: !Equals [!Ref TrustMode, customer_principal]
+  HasIamExternalId: !Not [!Equals [!Ref IamExternalId, ""]]
+
+Resources:
+  MemberAccountRoles:
+    Type: AWS::CloudFormation::StackSet
+    Properties:
+      StackSetName: !Sub ${RoleName}-members
+      Description: Xplorr read-only role in every member account
+      PermissionModel: SERVICE_MANAGED
+      AutoDeployment:
+        Enabled: true
+        RetainStacksOnAccountRemoval: false
+      ManagedExecution:
+        Active: true
+      Capabilities:
+        - CAPABILITY_NAMED_IAM
+      OperationPreferences:
+        FailureTolerancePercentage: 10
+        MaxConcurrentPercentage: 25
+        RegionConcurrencyType: PARALLEL
+      StackInstancesGroup:
+        - DeploymentTargets:
+            OrganizationalUnitIds: !Ref OrganizationalUnitIds
+          Regions:
+            - !Ref Region
+      Parameters:
+        - ParameterKey: TrustMode
+          ParameterValue: !Ref TrustMode
+        - ParameterKey: IamExternalId
+          ParameterValue: !Ref IamExternalId
+        - ParameterKey: CreateUser
+          ParameterValue: "false"
+        - ParameterKey: TrustedPrincipalArn
+          ParameterValue: !If
+            - IsCustomerPrincipal
+            - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:user/${UserName}
+            - ""
+        - ParameterKey: XplorrAccountId
+          ParameterValue: !Ref XplorrAccountId
+        - ParameterKey: RoleName
+          ParameterValue: !Ref RoleName
+        - ParameterKey: Region
+          ParameterValue: !Ref Region
+        - ParameterKey: AttachReadOnlyAccess
+          ParameterValue: !Ref AttachReadOnlyAccess
+        - ParameterKey: EnableAuditLog
+          ParameterValue: !Ref EnableAuditLog
+        - ParameterKey: ExportBucketName
+          ParameterValue: ""
+        - ParameterKey: ExportKmsKeyArn
+          ParameterValue: ""
+      # BEGIN role.yaml (generated by scripts/sync-stackset.py, do not edit by hand)
+      TemplateBody: |
+        AWSTemplateFormatVersion: "2010-09-09"
+        Description: >-
+          Read-only IAM role for Xplorr cloud cost management. Creates a least-privilege
+          role and, in the customer_principal trust mode, an IAM user that assumes it.
+          No access key is created. Source: https://github.com/Xplorrio/cloud-onboarding
+
+        Metadata:
+          AWS::CloudFormation::Interface:
+            ParameterGroups:
+              - Label:
+                  default: Trust
+                Parameters:
+                  - TrustMode
+                  - IamExternalId
+                  - CreateUser
+                  - UserName
+                  - TrustedPrincipalArn
+                  - AdditionalAssumableRoleArns
+                  - AssumableOrganizationId
+                  - XplorrAccountId
+              - Label:
+                  default: Role
+                Parameters:
+                  - RoleName
+                  - Region
+                  - AttachReadOnlyAccess
+                  - EnableAuditLog
+                  - ExportBucketName
+                  - ExportKmsKeyArn
+            ParameterLabels:
+              TrustMode:
+                default: Trust mode
+              IamExternalId:
+                default: External ID
+              CreateUser:
+                default: Create the assuming IAM user
+              UserName:
+                default: IAM user name
+              TrustedPrincipalArn:
+                default: Other principal to trust
+              AdditionalAssumableRoleArns:
+                default: Roles in other accounts the user may assume
+              AssumableOrganizationId:
+                default: Organization whose Xplorr roles the user may assume
+              XplorrAccountId:
+                default: Xplorr AWS account (xplorr_principal only)
+              RoleName:
+                default: Role name
+              Region:
+                default: Region to enter in Xplorr
+              AttachReadOnlyAccess:
+                default: Also attach ReadOnlyAccess
+              EnableAuditLog:
+                default: Allow CloudTrail LookupEvents
+              ExportBucketName:
+                default: FOCUS or carbon export bucket
+              ExportKmsKeyArn:
+                default: KMS key of the export bucket (SSE-KMS only)
+
+        Parameters:
+          TrustMode:
+            Type: String
+            Default: customer_principal
+            AllowedValues:
+              - customer_principal
+              - xplorr_principal
+            Description: >-
+              customer_principal (works today) creates an IAM user in this account that
+              assumes the role. xplorr_principal requires Xplorr keyless onboarding
+              (coming soon): the role trusts Xplorr roles named xplorr-* in Xplorr's AWS
+              account and needs an external ID.
+          IamExternalId:
+            Type: String
+            Default: ""
+            AllowedPattern: "^$|^[A-Za-z0-9+=,.@:/_-]{2,1224}$"
+            Description: >-
+              The External ID field in Xplorr. Required for xplorr_principal, where Xplorr
+              will generate it for your organization. Optional for customer_principal;
+              generate one with openssl rand -hex 16 and enter the same value in Xplorr.
+          CreateUser:
+            Type: String
+            Default: "true"
+            AllowedValues:
+              - "true"
+              - "false"
+            Description: >-
+              customer_principal only. Xplorr keeps one set of base keys per organization,
+              so create the user in one account only. Set to false in every other account
+              and give that user's ARN as TrustedPrincipalArn.
+          UserName:
+            Type: String
+            Default: xplorr-assumer
+            AllowedPattern: "^[a-z0-9+=,.@_-]{1,64}$"
+            ConstraintDescription: 1 to 64 lowercase characters from a-z, 0-9 and +=,.@_-
+            Description: customer_principal only. Name of the IAM user that assumes the role.
+          TrustedPrincipalArn:
+            Type: String
+            Default: ""
+            Description: >-
+              customer_principal only. Another IAM principal allowed to assume the role,
+              for example arn:aws:iam::111111111111:user/xplorr-assumer in your first or
+              management account.
+          AdditionalAssumableRoleArns:
+            Type: CommaDelimitedList
+            Default: ""
+            Description: >-
+              customer_principal with CreateUser only. Roles in other accounts the user may
+              assume, for example arn:aws:iam::222222222222:role/xplorr-readonly. Each must
+              also trust the user.
+          AssumableOrganizationId:
+            Type: String
+            Default: ""
+            AllowedPattern: "^$|^o-[a-z0-9]{10,32}$"
+            Description: >-
+              customer_principal with CreateUser only. An AWS Organizations id (o-...). The
+              user may then assume a role named RoleName in any account of that
+              organization, which suits stackset.yaml. Each role must still trust the user.
+          XplorrAccountId:
+            Type: String
+            Default: "732121667940"
+            AllowedPattern: "^[0-9]{12}$"
+            Description: >-
+              xplorr_principal only. The Xplorr AWS account the role trusts. Only its roles
+              named xplorr-* may assume this role.
+          RoleName:
+            Type: String
+            Default: xplorr-readonly
+            AllowedPattern: "^[a-z0-9+=,.@_-]{1,64}$"
+            ConstraintDescription: 1 to 64 lowercase characters from a-z, 0-9 and +=,.@_-
+            Description: Name of the role, lowercase. Enter it in the Role name field in Xplorr.
+          Region:
+            Type: String
+            Default: us-east-1
+            AllowedPattern: "^[a-z]{2}(-[a-z]+)+-[0-9]$"
+            ConstraintDescription: an AWS region such as us-east-1
+            Description: Region Xplorr uses for STS and CloudTrail calls. Enter it in the Region field in Xplorr.
+          AttachReadOnlyAccess:
+            Type: String
+            Default: "false"
+            AllowedValues:
+              - "true"
+              - "false"
+            Description: >-
+              Also attach the AWS managed ReadOnlyAccess policy. Not needed: the
+              least-privilege policy covers every call Xplorr makes. ReadOnlyAccess can
+              read data, not just metadata, including S3 objects and DynamoDB items.
+          EnableAuditLog:
+            Type: String
+            Default: "true"
+            AllowedValues:
+              - "true"
+              - "false"
+            Description: Grant cloudtrail:LookupEvents for anomaly root cause analysis.
+          ExportBucketName:
+            Type: String
+            Default: ""
+            AllowedPattern: "^$|^[a-z0-9.-]{3,63}$"
+            Description: Optional. S3 bucket holding a FOCUS billing export or the carbon footprint export.
+          ExportKmsKeyArn:
+            Type: String
+            Default: ""
+            AllowedPattern: "^$|^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$"
+            Description: >-
+              Optional. ARN of the KMS key that encrypts the export bucket (SSE-KMS).
+              Grants kms:Decrypt on it. Not needed for SSE-S3, the default encryption.
+
+        Rules:
+          XplorrPrincipalNeedsIamExternalId:
+            RuleCondition: !Equals [!Ref TrustMode, xplorr_principal]
+            Assertions:
+              - Assert: !Not [!Equals [!Ref IamExternalId, ""]]
+                AssertDescription: IamExternalId is required when TrustMode is xplorr_principal.
+          CustomerPrincipalNeedsSomeoneToTrust:
+            RuleCondition: !Equals [!Ref TrustMode, customer_principal]
+            Assertions:
+              - Assert: !Or
+                  - !Equals [!Ref CreateUser, "true"]
+                  - !Not [!Equals [!Ref TrustedPrincipalArn, ""]]
+                AssertDescription: Set CreateUser to true or give a TrustedPrincipalArn.
+
+        Conditions:
+          IsCustomerPrincipal: !Equals [!Ref TrustMode, customer_principal]
+          CreateTheUser: !And
+            - !Condition IsCustomerPrincipal
+            - !Equals [!Ref CreateUser, "true"]
+          HasTrustedPrincipal: !And
+            - !Condition IsCustomerPrincipal
+            - !Not [!Equals [!Ref TrustedPrincipalArn, ""]]
+          HasIamExternalId: !Not [!Equals [!Ref IamExternalId, ""]]
+          HasAdditionalRoles: !And
+            - !Condition CreateTheUser
+            - !Not [!Equals [!Join ["", !Ref AdditionalAssumableRoleArns], ""]]
+          HasAssumableOrganization: !And
+            - !Condition CreateTheUser
+            - !Not [!Equals [!Ref AssumableOrganizationId, ""]]
+          AttachReadOnly: !Equals [!Ref AttachReadOnlyAccess, "true"]
+          AuditLog: !Equals [!Ref EnableAuditLog, "true"]
+          HasExportBucket: !Not [!Equals [!Ref ExportBucketName, ""]]
+          HasExportKmsKey: !Not [!Equals [!Ref ExportKmsKeyArn, ""]]
+
+        Resources:
+          # The IAM user that assumes the role. No console password and no access key:
+          # create the key yourself in the IAM console.
+          XplorrUser:
+            Type: AWS::IAM::User
+            Condition: CreateTheUser
+            Properties:
+              UserName: !Ref UserName
+              Tags:
+                - Key: managed-by
+                  Value: xplorr-cloud-onboarding
+
+          XplorrUserAssumePolicy:
+            Type: AWS::IAM::UserPolicy
+            Condition: CreateTheUser
+            Properties:
+              UserName: !Ref XplorrUser
+              PolicyName: xplorr-assume-role
+              PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  # The role in this account.
+                  - Sid: AssumeXplorrRole
+                    Effect: Allow
+                    Action: sts:AssumeRole
+                    Resource: !GetAtt XplorrRole.Arn
+                  # Listed roles in other accounts.
+                  - !If
+                    - HasAdditionalRoles
+                    - Sid: AssumeListedXplorrRoles
+                      Effect: Allow
+                      Action: sts:AssumeRole
+                      Resource: !Ref AdditionalAssumableRoleArns
+                    - !Ref AWS::NoValue
+                  # The role of the same name in any account of one organization.
+                  - !If
+                    - HasAssumableOrganization
+                    - Sid: AssumeXplorrRoleInOrganization
+                      Effect: Allow
+                      Action: sts:AssumeRole
+                      Resource: !Sub arn:${AWS::Partition}:iam::*:role/${RoleName}
+                      Condition:
+                        StringEquals:
+                          aws:ResourceOrgID: !Ref AssumableOrganizationId
+                    - !Ref AWS::NoValue
+
+          XplorrRole:
+            Type: AWS::IAM::Role
+            Properties:
+              RoleName: !Ref RoleName
+              Description: Read-only access for Xplorr cloud cost management
+              MaxSessionDuration: 3600
+              AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  - Sid: AllowAssume
+                    Effect: Allow
+                    Action: sts:AssumeRole
+                    Principal:
+                      AWS: !If
+                        - IsCustomerPrincipal
+                        - - !If [CreateTheUser, !GetAtt XplorrUser.Arn, !Ref AWS::NoValue]
+                          - !If [HasTrustedPrincipal, !Ref TrustedPrincipalArn, !Ref AWS::NoValue]
+                        - !Sub arn:${AWS::Partition}:iam::${XplorrAccountId}:root
+                    Condition: !If
+                      - IsCustomerPrincipal
+                      - !If
+                        - HasIamExternalId
+                        - StringEquals:
+                            sts:ExternalId: !Ref IamExternalId
+                        - !Ref AWS::NoValue
+                      # xplorr_principal: the external ID (required by a rule above), and
+                      # only Xplorr's own onboarding roles, not every principal there.
+                      - StringEquals:
+                          sts:ExternalId: !Ref IamExternalId
+                        ArnLike:
+                          aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${XplorrAccountId}:role/xplorr-*
+              ManagedPolicyArns: !If
+                - AttachReadOnly
+                - - !Sub arn:${AWS::Partition}:iam::aws:policy/ReadOnlyAccess
+                - !Ref AWS::NoValue
+              Policies:
+                - PolicyName: xplorr-read
+                  PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                      - Sid: CostAndCommitments
+                        Effect: Allow
+                        Action:
+                          - ce:GetCostAndUsage
+                          - ce:GetCostAndUsageWithResources
+                          - ce:GetReservationCoverage
+                          - ce:GetReservationUtilization
+                          - ce:GetReservationPurchaseRecommendation
+                          - ce:GetSavingsPlansCoverage
+                          - ce:GetSavingsPlansUtilizationDetails
+                          - ce:GetSavingsPlansPurchaseRecommendation
+                        Resource: "*"
+                      - Sid: Commitments
+                        Effect: Allow
+                        Action:
+                          - savingsplans:DescribeSavingsPlans
+                          - ec2:DescribeReservedInstances
+                          - rds:DescribeReservedDBInstances
+                          - elasticache:DescribeReservedCacheNodes
+                        Resource: "*"
+                      - Sid: Credits
+                        Effect: Allow
+                        Action:
+                          - billing:GetCredits
+                          - billing:GetCreditAllocationHistory
+                        Resource: "*"
+                      - Sid: Inventory
+                        Effect: Allow
+                        Action:
+                          - ec2:DescribeRegions
+                          - ec2:DescribeInstances
+                          - ec2:DescribeVolumes
+                          - ec2:DescribeVpcs
+                          - ec2:DescribeSubnets
+                          - ec2:DescribeSecurityGroups
+                          - ec2:DescribeNatGateways
+                          - ec2:DescribeInternetGateways
+                          - elasticloadbalancing:DescribeLoadBalancers
+                          - tag:GetResources
+                        Resource: "*"
+                      - Sid: IdleDetection
+                        Effect: Allow
+                        Action: cloudwatch:GetMetricStatistics
+                        Resource: "*"
+                      - Sid: Pricing
+                        Effect: Allow
+                        Action: pricing:GetProducts
+                        Resource: "*"
+                      - Sid: Invoices
+                        Effect: Allow
+                        Action: invoicing:ListInvoiceSummaries
+                        Resource: "*"
+                      - !If
+                        - AuditLog
+                        - Sid: AuditLog
+                          Effect: Allow
+                          Action: cloudtrail:LookupEvents
+                          Resource: "*"
+                        - !Ref AWS::NoValue
+                      - !If
+                        - HasExportBucket
+                        - Sid: ExportBucketList
+                          Effect: Allow
+                          Action: s3:ListBucket
+                          Resource: !Sub arn:${AWS::Partition}:s3:::${ExportBucketName}
+                        - !Ref AWS::NoValue
+                      - !If
+                        - HasExportBucket
+                        - Sid: ExportObjectRead
+                          Effect: Allow
+                          Action: s3:GetObject
+                          Resource: !Sub arn:${AWS::Partition}:s3:::${ExportBucketName}/*
+                        - !Ref AWS::NoValue
+                      - !If
+                        - HasExportKmsKey
+                        - Sid: ExportKmsDecrypt
+                          Effect: Allow
+                          Action: kms:Decrypt
+                          Resource: !Ref ExportKmsKeyArn
+                        - !Ref AWS::NoValue
+              Tags:
+                - Key: managed-by
+                  Value: xplorr-cloud-onboarding
+
+        Outputs:
+          AwsAccountId:
+            Description: AWS account ID field in Xplorr
+            Value: !Ref AWS::AccountId
+          RoleName:
+            Description: Role name field in Xplorr
+            Value: !Ref XplorrRole
+          RoleArn:
+            Description: ARN of the role, which Xplorr shows under the Role name field
+            Value: !GetAtt XplorrRole.Arn
+          IamExternalId:
+            Condition: HasIamExternalId
+            Description: External ID field in Xplorr (not shown when no external ID is set)
+            Value: !Ref IamExternalId
+          Region:
+            Description: Region field in Xplorr
+            Value: !Ref Region
+          TrustMode:
+            Description: The trust mode this role was created with
+            Value: !Ref TrustMode
+          UserName:
+            Condition: CreateTheUser
+            Description: >-
+              Create an access key for this user in the IAM console (Security credentials,
+              Create access key, Third-party service) and save it once in Xplorr as the base keys
+            Value: !Ref XplorrUser
+          UserArn:
+            Condition: CreateTheUser
+            Description: Pass this as TrustedPrincipalArn when creating the role in every other account
+            Value: !GetAtt XplorrUser.Arn
+      # END role.yaml
+
+Outputs:
+  StackSetName:
+    Description: The StackSet that holds the member account roles
+    Value: !Ref MemberAccountRoles
+  RoleName:
+    Description: Role name field in Xplorr, the same for every account
+    Value: !Ref RoleName
+  IamExternalId:
+    Condition: HasIamExternalId
+    Description: External ID field in Xplorr, the same for every account
+    Value: !Ref IamExternalId
+  Region:
+    Description: Region field in Xplorr
+    Value: !Ref Region

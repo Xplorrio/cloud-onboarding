@@ -1,0 +1,9 @@
+region    = "us-east-1"
+role_name = "xplorr-readonly"
+# Optional. Leave empty for no external ID, or paste a value from: openssl rand -hex 16
+iam_external_id        = ""
+attach_readonly_access = false
+# Roles created with examples/additional-account in other accounts.
+user_assumable_role_arns = [
+  "arn:aws:iam::222222222222:role/xplorr-readonly",
+]
