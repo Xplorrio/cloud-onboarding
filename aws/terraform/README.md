@@ -73,8 +73,7 @@ module "xplorr" {
 }
 ```
 
-or by a git source pinned to a release tag (works once this repository is
-public):
+or by a git source pinned to a release tag:
 
 ```hcl
 module "xplorr" {

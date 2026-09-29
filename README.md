@@ -67,7 +67,7 @@ module "xplorr" {
 }
 ```
 
-Git sources work once this repository is public. Always pin `ref` to a tag
+Always pin `ref` to a tag
 (see [CHANGELOG.md](CHANGELOG.md)), never to a branch.
 
 ## Releases

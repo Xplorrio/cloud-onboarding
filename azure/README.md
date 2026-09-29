@@ -139,7 +139,7 @@ module "xplorr" {
 }
 ```
 
-or at a release tag. Git sources work once this repository is public:
+or at a release tag:
 
 ```hcl
 module "xplorr" {
