@@ -10,8 +10,13 @@ locals {
   # Where the module comes from. The default is the module in this cloned
   # repository. To use a pinned release instead (works once the repository is
   # public), set:
-  #   XPLORR_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.1.1"
+  #   XPLORR_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.2.0"
   module_source = get_env("XPLORR_MODULE_SOURCE", "${get_parent_terragrunt_dir()}/../terraform")
+
+  # The opt-in write role on its own (write-role/), for an account whose
+  # read-only role exists already. For a pinned release, set:
+  #   XPLORR_WRITE_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform/modules/write-role?ref=v0.2.0"
+  write_module_source = get_env("XPLORR_WRITE_MODULE_SOURCE", "${get_parent_terragrunt_dir()}/../terraform/modules/write-role")
 }
 
 generate "provider" {

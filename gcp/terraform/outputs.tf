@@ -68,5 +68,18 @@ output "next_steps" {
     local.keyless ? "2. Keyless GCP onboarding is coming soon; keep this service account until the Xplorr form offers it." : (local.create_key ? "2. terraform output -raw xplorr_credentials_json > ${local.credentials_file_name}" : "2. ${local.key_command}"),
     local.keyless || local.create_key ? null : "3. ${local.credentials_command}",
     local.keyless ? null : "${local.create_key ? "3" : "4"}. In Xplorr, Infrastructure > Cloud Accounts > Connect account > Google Cloud Platform. GCP project ID: ${var.project_id}. Credentials (JSON): the contents of ${local.credentials_file_name}. Then delete ${local.credentials_file_name}${local.create_key ? "" : " and ${local.key_file_name}"}.",
+    var.enable_write_role ? "Write access (opt in): the custom role ${var.write_role_id} may carry out ${join(", ", var.write_actions)} in ${var.project_id}. Xplorr uses it only after a person in your Xplorr organization approves an action. Print the values with: terraform output -json xplorr_write_access" : null,
   ]))
 }
+
+output "xplorr_write_access" {
+  description = "With enable_write_role. What Xplorr asks for when you turn on write access: the custom role ID, the service account it is granted to, the action types and the permissions. Null when the write role is off."
+  value = var.enable_write_role ? {
+    custom_role_id  = google_project_iam_custom_role.write[0].name
+    service_account = google_service_account.xplorr.email
+    actions         = var.write_actions
+    permissions     = local.write_role_permissions
+    protect_tag     = var.write_protect_tag
+  } : null
+}
+

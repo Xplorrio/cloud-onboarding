@@ -187,3 +187,50 @@ variable "enable_apis" {
   type        = bool
   default     = true
 }
+
+# Opt-in write access. Off by default. A separate custom role bound to the
+# same service account; the viewer roles above are never changed.
+
+variable "enable_write_role" {
+  description = "Create the xplorrWrite custom role in project_id and grant it to the Xplorr service account, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The viewer roles are not changed."
+  type        = bool
+  default     = false
+}
+
+variable "write_actions" {
+  description = "With enable_write_role. The action types the custom role may carry out. stop_idle_instance grants compute.instances.stop, and compute.instances.start to undo it."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !var.enable_write_role || length(var.write_actions) > 0
+    error_message = "enable_write_role = true needs at least one action type in write_actions."
+  }
+
+  validation {
+    condition     = alltrue([for a in var.write_actions : contains(["stop_idle_instance"], a)])
+    error_message = "write_actions may hold only stop_idle_instance on Google Cloud."
+  }
+}
+
+variable "write_role_id" {
+  description = "With enable_write_role. ID of the custom role in project_id (letters, digits, underscores and periods). A deleted custom role keeps its ID reserved for several weeks, so pick another ID if the old one is still reserved."
+  type        = string
+  default     = "xplorrWrite"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9_.]{3,64}$", var.write_role_id))
+    error_message = "write_role_id must be 3 to 64 letters, digits, underscores or periods."
+  }
+}
+
+variable "write_protect_tag" {
+  description = "With enable_write_role. Optional. A Resource Manager tag key in namespaced form, for example my-project-id/xplorr-protect. The grant then carries an IAM condition, so instances tagged with that key and the value true are refused. The tag key and its value true must exist before apply. Labels cannot be used in IAM conditions; tags can. Null means no condition."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.write_protect_tag == null || can(regex("^[a-z0-9][a-z0-9-]{0,62}/[A-Za-z0-9][A-Za-z0-9._-]{0,62}$", coalesce(var.write_protect_tag, "x/x")))
+    error_message = "write_protect_tag must be a namespaced tag key such as my-project-id/xplorr-protect, or null."
+  }
+}

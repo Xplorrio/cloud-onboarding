@@ -42,12 +42,18 @@ exported and paste the printed line into the script.
 
 ## Rules for changes
 
-- **Permissions.** Every permission must be a read that Xplorr actually calls
-  (`services/cloud-sync-service/src` in the Xplorr app). The AWS policy lives in
-  both `aws/terraform/policy.tf` and `aws/cloudformation/role.yaml`;
-  `scripts/check-policy-drift.py` fails if they differ. After editing
-  `role.yaml`, run `python3 scripts/sync-stackset.py` to refresh the copy in
-  `stackset.yaml`.
+- **Permissions.** Every permission of a read-only role must be a read that
+  Xplorr actually calls (`services/cloud-sync-service/src` in the Xplorr app).
+  The AWS policy lives in both `aws/terraform/policy.tf` and
+  `aws/cloudformation/role.yaml`; `scripts/check-policy-drift.py` fails if they
+  differ. After editing `role.yaml`, run `python3 scripts/sync-stackset.py` to
+  refresh the copy in `stackset.yaml`.
+- **Write permissions.** A write permission never goes into a read-only role.
+  It belongs to the opt-in write role, under one action type from the Xplorr
+  actions catalog, off by default, with the narrowest resource and a guard
+  where the cloud has one. The AWS write policy lives in both
+  `aws/terraform/modules/write-role/main.tf` and
+  `aws/cloudformation/write-role.yaml`; the drift check covers it too.
 - **Placeholders only.** Use `111111111111`, `00000000-0000-0000-0000-000000000000`,
   `my-project`, `example.com`. Never a real account, tenant, subscription,
   project, email or customer name.

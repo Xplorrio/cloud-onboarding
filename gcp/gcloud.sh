@@ -37,6 +37,14 @@
 #   --output-dir DIR          Where xplorr-connect-form.json and
 #                             xplorr-credentials.json are written (default .)
 #   --skip-apis               Do not enable APIs
+#   --enable-write-action A   Opt-in write access: create a separate custom role
+#                             for approved action type A and grant it to the
+#                             service account (repeatable). Off unless given.
+#                             Action types: stop_idle_instance
+#   --write-role-id ID        Custom role id for write access (default xplorrWrite)
+#   --write-protect-tag KEY   Refuse instances tagged KEY=true, for example
+#                             my-project-id/xplorr-protect (a Resource Manager
+#                             tag key that already exists, with value true)
 #   -h, --help                Show this help
 #
 # Needs: gcloud, bq (part of the Google Cloud SDK) and python3.
@@ -61,6 +69,9 @@ XPLORR_PRINCIPAL=""
 CREATE_KEY="false"
 KEY_FILE="./xplorr-key.json"
 ENABLE_APIS="true"
+WRITE_ACTIONS=()
+WRITE_ROLE_ID="xplorrWrite"
+WRITE_PROTECT_TAG=""
 
 usage() {
   sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
@@ -95,6 +106,9 @@ while [[ $# -gt 0 ]]; do
     --key-file) need_value "$@"; KEY_FILE="$2"; shift 2 ;;
     --output-dir) need_value "$@"; OUTPUT_DIR="$2"; shift 2 ;;
     --skip-apis) ENABLE_APIS="false"; shift ;;
+    --enable-write-action) need_value "$@"; WRITE_ACTIONS+=("$2"); shift 2 ;;
+    --write-role-id) need_value "$@"; WRITE_ROLE_ID="$2"; shift 2 ;;
+    --write-protect-tag) need_value "$@"; WRITE_PROTECT_TAG="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
@@ -132,6 +146,20 @@ case "$TRUST_MODE" in
     ;;
   *) die "--trust-mode must be customer_principal or xplorr_principal" ;;
 esac
+
+WRITE_PERMISSIONS=()
+for a in "${WRITE_ACTIONS[@]+"${WRITE_ACTIONS[@]}"}"; do
+  case "$a" in
+    stop_idle_instance) WRITE_PERMISSIONS+=(compute.instances.stop compute.instances.start) ;;
+    *) die "--enable-write-action $a is not an action type here. Google Cloud supports: stop_idle_instance" ;;
+  esac
+done
+[[ "$WRITE_ROLE_ID" =~ ^[a-zA-Z0-9_.]{3,64}$ ]] || die "--write-role-id must be 3 to 64 letters, digits, underscores or periods"
+if [[ -n "$WRITE_PROTECT_TAG" ]]; then
+  [[ ${#WRITE_ACTIONS[@]} -gt 0 ]] || die "--write-protect-tag needs --enable-write-action"
+  [[ "$WRITE_PROTECT_TAG" =~ ^[a-z0-9][a-z0-9-]{0,62}/[A-Za-z0-9][A-Za-z0-9._-]{0,62}$ ]] ||
+    die "--write-protect-tag must be a namespaced tag key such as my-project-id/xplorr-protect"
+fi
 
 for tool in gcloud bq python3; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is not installed or not on PATH"
@@ -333,7 +361,58 @@ elif [[ "$CREATE_KEY" == "true" ]]; then
   fi
 fi
 
-# 8. Find the export table, if the export has started
+# 8. Opt-in write access, only with --enable-write-action. A separate custom
+# role holding only the permissions of the listed action types, granted to
+# the same service account. The viewer roles above are not changed. Xplorr
+# uses it only after a person in your Xplorr organization approves an action.
+
+if [[ ${#WRITE_ACTIONS[@]} -gt 0 ]]; then
+  WRITE_ROLE="projects/${PROJECT_ID}/roles/${WRITE_ROLE_ID}"
+  PERMS=$(printf '%s\n' "${WRITE_PERMISSIONS[@]}" | sort -u | paste -sd, -)
+  step "Write access: custom role $WRITE_ROLE ($PERMS)"
+  ROLE_STATE=$(gcloud iam roles describe "$WRITE_ROLE_ID" --project="$PROJECT_ID" --format='value(deleted)' 2>/dev/null || echo missing)
+  if [[ "$ROLE_STATE" == "missing" ]]; then
+    gcloud iam roles create "$WRITE_ROLE_ID" --project="$PROJECT_ID" \
+      --title="Xplorr write" \
+      --description="Opt-in write access for Xplorr approved actions: ${WRITE_ACTIONS[*]}" \
+      --permissions="$PERMS" --stage=GA --quiet >/dev/null
+    echo "    created"
+  else
+    if [[ "$ROLE_STATE" == "True" ]]; then
+      gcloud iam roles undelete "$WRITE_ROLE_ID" --project="$PROJECT_ID" --quiet >/dev/null
+      echo "    undeleted"
+    fi
+    gcloud iam roles update "$WRITE_ROLE_ID" --project="$PROJECT_ID" \
+      --permissions="$PERMS" --quiet >/dev/null
+    echo "    permissions set"
+  fi
+
+  step "Granting $WRITE_ROLE to $SA_EMAIL on $PROJECT_ID"
+  if [[ -n "$WRITE_PROTECT_TAG" ]]; then
+    # The expression holds a comma, which --condition cannot take, so the
+    # condition goes through a file.
+    CONDITION_FILE=$(mktemp)
+    WRITE_PROTECT_TAG="$WRITE_PROTECT_TAG" python3 - "$CONDITION_FILE" <<'PY'
+import json, os, sys
+tag = os.environ["WRITE_PROTECT_TAG"]
+with open(sys.argv[1], "w") as fh:
+    json.dump({
+        "title": "not-protected",
+        "description": f"Refuse instances tagged {tag} = true",
+        "expression": f"!resource.matchTag('{tag}', 'true')",
+    }, fh)
+PY
+    retry gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="$MEMBER" --role="$WRITE_ROLE" --condition-from-file="$CONDITION_FILE" --quiet >/dev/null
+    rm -f "$CONDITION_FILE"
+    echo "    with a condition refusing instances tagged ${WRITE_PROTECT_TAG}=true"
+  else
+    retry gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="$MEMBER" --role="$WRITE_ROLE" --condition=None --quiet >/dev/null
+  fi
+fi
+
+# 9. Find the export table, if the export has started
 
 if [[ -z "$TABLE" ]]; then
   TABLE=$(bq --project_id="$PROJECT_ID" ls --format=json --max_results=1000 "${PROJECT_ID}:${DATASET}" 2>/dev/null |
@@ -348,7 +427,7 @@ print(names[0] if len(names) == 1 else "")
 ' || true)
 fi
 
-# 9. What to paste into Xplorr. The non secret fields go to
+# 10. What to paste into Xplorr. The non secret fields go to
 # xplorr-connect-form.json. The complete Credentials (JSON), key included, is
 # written to xplorr-credentials.json only when the key file is present, and is
 # never printed.
@@ -376,6 +455,13 @@ echo
 echo "================================================================"
 echo "Done. Service account: $SA_EMAIL"
 echo "================================================================"
+if [[ ${#WRITE_ACTIONS[@]} -gt 0 ]]; then
+  echo
+  echo "Write access (opt in): custom role projects/${PROJECT_ID}/roles/${WRITE_ROLE_ID}"
+  echo "  action types: ${WRITE_ACTIONS[*]}"
+  echo "  granted to:   $SA_EMAIL${WRITE_PROTECT_TAG:+, except instances tagged ${WRITE_PROTECT_TAG}=true}"
+  echo "  Xplorr uses it only after a person in your Xplorr organization approves an action."
+fi
 if [[ -z "$TABLE" ]]; then
   echo
   echo "No gcp_billing_export_v1_* table found in ${PROJECT_ID}:${DATASET} yet."

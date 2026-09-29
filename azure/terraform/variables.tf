@@ -108,3 +108,45 @@ variable "xplorr_application_id" {
     error_message = "xplorr_application_id (a GUID) is required when trust_mode is xplorr_principal."
   }
 }
+
+# Opt-in write access. Off by default. A separate custom role assigned
+# alongside the read-only roles; those are never changed.
+
+variable "enable_write_role" {
+  description = "Create the xplorr-write custom role and assign it to the same principal, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The read-only roles are not changed."
+  type        = bool
+  default     = false
+}
+
+variable "write_actions" {
+  description = "With enable_write_role. The action types the custom role may carry out. deallocate_idle_vm grants Microsoft.Compute/virtualMachines/deallocate/action, and start/action to undo it."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !var.enable_write_role || length(var.write_actions) > 0
+    error_message = "enable_write_role = true needs at least one action type in write_actions."
+  }
+
+  validation {
+    condition     = alltrue([for a in var.write_actions : contains(["deallocate_idle_vm"], a)])
+    error_message = "write_actions may hold only deallocate_idle_vm on Azure."
+  }
+}
+
+variable "write_role_name" {
+  description = "With enable_write_role. Name of the custom role definition. It must be unique in the tenant."
+  type        = string
+  default     = "xplorr-write"
+}
+
+variable "write_scopes" {
+  description = "With enable_write_role. Optional. Resource group IDs (inside the subscriptions or the management group above) to assign the custom role on, for example /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example. Empty assigns it on every subscription, or on the management group."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.write_scopes : can(regex("^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+$", s))])
+    error_message = "Each write_scopes entry must be a resource group ID such as /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example."
+  }
+}

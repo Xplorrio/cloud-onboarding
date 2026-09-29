@@ -9,6 +9,12 @@ mock_provider "google" {
     }
   }
 
+  mock_resource "google_project_iam_custom_role" {
+    defaults = {
+      name = "projects/my-project/roles/xplorrWrite"
+    }
+  }
+
   mock_data "google_bigquery_dataset" {
     defaults = {
       location = "US"
@@ -206,3 +212,79 @@ run "organization_and_folders" {
     error_message = "bigquery_access_scope = project must grant Data Viewer on the project."
   }
 }
+
+run "write_role_off_by_default" {
+  command = apply
+
+  assert {
+    condition     = length(google_project_iam_custom_role.write) == 0 && length(google_project_iam_member.write) == 0 && output.xplorr_write_access == null
+    error_message = "The write role must be off by default."
+  }
+}
+
+run "write_role_stop_instance" {
+  command = apply
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["stop_idle_instance"]
+  }
+
+  assert {
+    condition     = google_project_iam_custom_role.write[0].permissions == toset(["compute.instances.start", "compute.instances.stop"])
+    error_message = "stop_idle_instance must grant only compute.instances.stop and compute.instances.start."
+  }
+
+  assert {
+    condition     = google_project_iam_member.write[0].role == "projects/my-project/roles/xplorrWrite" && google_project_iam_member.write[0].member == "serviceAccount:xplorr-reader@my-project.iam.gserviceaccount.com"
+    error_message = "The custom role must be granted to the Xplorr service account."
+  }
+
+  assert {
+    condition     = length(google_project_iam_member.write[0].condition) == 0
+    error_message = "Without write_protect_tag the grant has no condition."
+  }
+
+  assert {
+    condition     = !contains(keys(google_project_iam_member.xplorr), "projects/my-project/roles/xplorrWrite")
+    error_message = "The viewer grants must not change."
+  }
+}
+
+run "write_role_protect_tag" {
+  command = apply
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["stop_idle_instance"]
+    write_protect_tag = "my-project/xplorr-protect"
+  }
+
+  assert {
+    condition     = google_project_iam_member.write[0].condition[0].expression == "!resource.matchTag('my-project/xplorr-protect', 'true')"
+    error_message = "write_protect_tag must add a condition refusing tagged instances."
+  }
+}
+
+run "write_role_needs_actions" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+  }
+
+  expect_failures = [var.write_actions]
+}
+
+run "bad_protect_tag_rejected" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["stop_idle_instance"]
+    write_protect_tag = "xplorr:protect"
+  }
+
+  expect_failures = [var.write_protect_tag]
+}
+

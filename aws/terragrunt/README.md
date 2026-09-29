@@ -9,6 +9,7 @@ aws/terragrunt/
   root.hcl                        provider, optional S3 state, module source
   single-account/terragrunt.hcl   customer_principal (works today)
   keyless/terragrunt.hcl          xplorr_principal (requires Xplorr keyless onboarding, coming soon)
+  write-role/terragrunt.hcl       opt-in write role only, for an account whose read-only role exists
 ```
 
 ## Prerequisites
@@ -34,7 +35,7 @@ terragrunt output -raw next_steps
 To use a pinned release instead of the local module:
 
 ```bash
-export XPLORR_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.1.1"
+export XPLORR_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.2.0"
 ```
 
 The state holds no secret, so a local backend is fine for a one off role. To
@@ -48,6 +49,27 @@ account. Xplorr keeps one set of base keys per organization, so every account
 must trust the same user. The
 [Terraform README](../terraform/README.md#one-set-of-base-keys-per-xplorr-organization)
 explains why.
+
+## Write access (opt in)
+
+Off by default. Two ways to create the separate `xplorr-write` role for
+approved actions:
+
+- In `single-account` or `keyless`, set `enable_write_role = true`, list the
+  action types in `write_actions`, and set `write_iam_external_id` (its own
+  value, never `iam_external_id`). The user created there may then assume
+  the write role too.
+- Or apply the `write-role` folder, which uses
+  [`modules/write-role`](../terraform/modules/write-role) and creates only the
+  write role. Set `trusted_principal_arns` to the user that assumes your
+  read-only role and add the new `role_arn` to that user's
+  `user_assumable_role_arns`, or switch it to `xplorr_principal`. For a pinned
+  release set `XPLORR_WRITE_MODULE_SOURCE`, as shown in `root.hcl`.
+
+What each action type allows, its guards and limits are in the
+[Terraform README](../terraform/README.md#write-access-opt-in). Remove it by
+setting `enable_write_role = false` and applying, or with `terragrunt destroy`
+in `write-role`.
 
 ## Connect it in Xplorr
 

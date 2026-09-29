@@ -1,2 +1,7 @@
 xplorr_account_id = "732121667940"
 iam_external_id   = "the-value-xplorr-shows-you"
+# Optional write access, off by default. The write external ID is a separate
+# value Xplorr shows you when you turn on write access.
+enable_write_role     = false
+write_actions         = ["stop_idle_instance"]
+write_iam_external_id = "the-write-value-xplorr-shows-you"

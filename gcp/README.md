@@ -9,7 +9,9 @@ to run it, which create the same thing:
 | Terraform | [`terraform/`](terraform/) | Teams that keep IAM in code |
 | gcloud | [`gcloud.sh`](gcloud.sh) | A one off setup from Cloud Shell or a laptop |
 
-Nothing here writes to your workloads. Every role is a viewer role.
+By default nothing here writes to your workloads: every role is a viewer
+role. Write access for approved actions is a separate custom role that you opt
+into; see [Write access (opt in)](#write-access-opt-in).
 
 ## What it creates
 
@@ -155,7 +157,7 @@ Or a git source pinned to a release tag:
 
 ```hcl
 module "xplorr" {
-  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//gcp/terraform?ref=v0.1.1"
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//gcp/terraform?ref=v0.2.0"
 
   project_id         = "my-project-id"
   billing_dataset_id = "billing_export"
@@ -206,6 +208,10 @@ yours does, both ways fail until an exception is made for this project.
 | `scope_roles` | the five project read roles | Roles granted on the organization and folders |
 | `additional_project_roles` | `[]` | Extra project roles |
 | `enable_apis` | `true` | Enable the APIs listed above |
+| `enable_write_role` | `false` | Create and grant the opt-in write custom role (see [Write access](#write-access-opt-in)) |
+| `write_actions` | `[]` | With `enable_write_role`: `stop_idle_instance` |
+| `write_role_id` | `xplorrWrite` | Custom role ID in `project_id` |
+| `write_protect_tag` | `null` | Namespaced tag key; instances tagged with it and the value `true` are refused |
 
 ### Outputs
 
@@ -218,6 +224,7 @@ yours does, both ways fail until an exception is made for this project.
 | `xplorr_credentials_json` | Sensitive; only with `create_key = true` |
 | `impersonation` | Only in `xplorr_principal` mode |
 | `next_steps` | What is left to do by hand |
+| `xplorr_write_access` | With `enable_write_role`: `custom_role_id`, `service_account`, `actions`, `permissions`, `protect_tag` |
 
 ## Step 2b: gcloud
 
@@ -314,6 +321,87 @@ If your organization enforces domain restricted sharing
 (`iam.allowedPolicyMemberDomains`), the Token Creator grant to an outside
 service account is refused until Xplorr's organization is allowed
 ([restricting identities by domain](https://docs.cloud.google.com/organization-policy/restrict-domains)).
+
+## Write access (opt in)
+
+Off by default. It lets Xplorr carry out an action a person in your Xplorr
+organization has approved, and nothing else:
+
+- **A separate custom role**, `projects/<project_id>/roles/xplorrWrite`,
+  granted to the same service account on the connected project. The viewer
+  roles do not change.
+- **Only the action types you list.** Each adds the permissions of one type.
+- **Approval first.** Xplorr uses it only to carry out an approved action;
+  syncing never needs it.
+
+| Action type | Custom role permissions |
+|---|---|
+| `stop_idle_instance` | `compute.instances.stop`, and `compute.instances.start` to undo it |
+
+The reads Xplorr makes to check an instance's state before and after come
+from Compute Viewer. Approved actions are rolling out in Xplorr; until the
+console offers write access for your project, the role is granted but unused.
+
+**Protecting instances.** IAM conditions can read Resource Manager tags, not
+labels. To refuse some instances, create a tag key with the value `true`,
+attach it to those instances, and pass the key in namespaced form
+(`write_protect_tag`, or `--write-protect-tag`):
+
+```bash
+gcloud resource-manager tags keys create xplorr-protect --parent=projects/my-project-id
+gcloud resource-manager tags values create true --parent=my-project-id/xplorr-protect
+gcloud resource-manager tags bindings create \
+  --tag-value=my-project-id/xplorr-protect/true \
+  --parent=//compute.googleapis.com/projects/my-project-id/zones/us-central1-a/instances/INSTANCE_ID \
+  --location=us-central1-a
+```
+
+The grant then carries the condition
+`!resource.matchTag('my-project-id/xplorr-protect', 'true')`. Create the tag
+key before you apply. A label named `xplorr-protect` has no effect on IAM.
+
+**Limits.** Instances in a managed instance group may be recreated or started
+again by the group; tag them, or keep write access off. Stopping an instance
+drops local SSD data unless it is preserved. The role is granted on the
+connected project only.
+
+Terraform:
+
+```hcl
+module "xplorr" {
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//gcp/terraform?ref=v0.2.0"
+
+  project_id = "my-project-id"
+
+  enable_write_role = true
+  write_actions     = ["stop_idle_instance"]
+  # write_protect_tag = "my-project-id/xplorr-protect"
+}
+```
+
+`terraform output -json xplorr_write_access` prints what Xplorr asks for:
+`custom_role_id`, the service account, the action types and the permissions.
+
+gcloud:
+
+```bash
+./gcloud.sh --project my-project-id --enable-write-action stop_idle_instance \
+  --write-protect-tag my-project-id/xplorr-protect
+```
+
+To remove it: with Terraform set `enable_write_role = false` and apply. With
+gcloud:
+
+```bash
+gcloud projects remove-iam-policy-binding my-project-id \
+  --member="serviceAccount:xplorr-reader@my-project-id.iam.gserviceaccount.com" \
+  --role=projects/my-project-id/roles/xplorrWrite --all --quiet
+gcloud iam roles delete xplorrWrite --project=my-project-id
+```
+
+A deleted custom role can be undeleted for 7 days, and its ID stays reserved
+for several weeks after that; `gcloud.sh` undeletes it if you turn write
+access on again soon after. Also turn write access off for the project in Xplorr.
 
 ## Organization and folder grants
 

@@ -3,6 +3,43 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.2.0 (unreleased)
+
+Proposed minor version: it adds new, opt-in templates and inputs. Nothing
+changes for existing users until they turn write access on.
+
+### Added
+
+- Opt-in write access for Xplorr approved actions, off by default in every
+  template and never merged into the read-only role. Each action type is
+  granted on its own:
+  - AWS: `stop_idle_instance`, `delete_unattached_ebs_volume` and
+    `release_unassociated_eip`. A separate `xplorr-write` role with its own
+    external ID and the same trust shape as the read-only role (the
+    `xplorr-assumer` user, or Xplorr's account `732121667940` limited to its
+    `xplorr-*` roles). An explicit Deny refuses resources tagged
+    `xplorr:protect` = `true`; optional region limit. Terraform
+    (`enable_write_role`, `write_actions`, `write_iam_external_id`, and the
+    standalone `aws/terraform/modules/write-role`), Terragrunt (`write-role`
+    folder, or the same inputs in `single-account` and `keyless`) and
+    CloudFormation (`write-role.yaml`, a separate stack).
+  - Azure: `deallocate_idle_vm`, a custom role `xplorr-write` assigned to the
+    same service principal, on the subscriptions, the management group or
+    chosen resource groups. Terraform (`enable_write_role`) and Bicep
+    (`write-role.bicep`).
+  - Google Cloud: `stop_idle_instance`, a custom role `xplorrWrite` granted to
+    the same service account, with an optional IAM condition on a Resource
+    Manager tag. Terraform (`enable_write_role`) and `gcloud.sh`
+    (`--enable-write-action`).
+  - `rightsize_instance` needs no cloud permission: it is a Terraform pull
+    request.
+- Outputs for the values Xplorr asks for when you turn on write access:
+  `xplorr_write_access_form` (AWS), `xplorr_write_access` (Azure, Google
+  Cloud), and the matching stack and deployment outputs.
+- `scripts/check-policy-drift.py` also compares the AWS write policy between
+  Terraform and CloudFormation. CI validates the Terragrunt `write-role`
+  folder.
+
 ## v0.1.1 (2026-09-26)
 
 ### Fixed

@@ -7,3 +7,9 @@ attach_readonly_access = false
 user_assumable_role_arns = [
   "arn:aws:iam::222222222222:role/xplorr-readonly",
 ]
+# Optional write access, off by default: a separate xplorr-write role for the
+# approved actions you list. See the README, Write access.
+enable_write_role = false
+write_actions     = ["stop_idle_instance"]
+# Its own external ID, not the one above: openssl rand -hex 16
+write_iam_external_id = ""

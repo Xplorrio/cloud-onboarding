@@ -65,3 +65,23 @@ module "iam_role" {
   tags                 = var.tags
 }
 
+# The opt-in write role, a separate role with its own external ID. Created
+# only with enable_write_role = true. In customer_principal mode it trusts the
+# same principals as the read-only role.
+module "write_role" {
+  source = "./modules/write-role"
+  count  = var.enable_write_role ? 1 : 0
+
+  actions                       = var.write_actions
+  trust_mode                    = var.trust_mode
+  role_name                     = var.write_role_name
+  trusted_principal_arns        = local.customer_mode ? local.trusted_principals : []
+  xplorr_account_id             = var.xplorr_account_id
+  xplorr_principal_role_pattern = var.xplorr_principal_role_pattern
+  iam_external_id               = var.write_iam_external_id
+  protect_tag_key               = var.write_protect_tag_key
+  allowed_regions               = var.write_allowed_regions
+  max_session_duration          = var.max_session_duration
+  permissions_boundary_arn      = var.permissions_boundary_arn
+  tags                          = var.tags
+}

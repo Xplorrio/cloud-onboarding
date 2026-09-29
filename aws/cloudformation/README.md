@@ -4,6 +4,7 @@
 |---|---|---|
 | [`role.yaml`](role.yaml) | Any single account; the first account of several standalone accounts; the management account of an organization | The read-only role and, in `customer_principal` mode with `CreateUser=true`, an IAM user (no password, no access key) whose only permission is assuming the Xplorr roles |
 | [`stackset.yaml`](stackset.yaml) | The management account of an AWS Organization, after `role.yaml` | A service managed StackSet that creates the role from `role.yaml` in every member account of the chosen organizational units, including accounts added later |
+| [`write-role.yaml`](write-role.yaml) | Only the accounts where you want approved actions, after `role.yaml`. Optional | The separate `xplorr-write` role, with only the action types you turn on. See [Write access](#write-access-opt-in) |
 
 The permissions are the least-privilege list documented in
 [the Terraform module](../terraform/README.md#permissions);
@@ -124,6 +125,68 @@ file** in the console.
 4. Every member account now has `xplorr-readonly`, and new accounts in those
    units get it automatically.
 
+## Write access (opt in)
+
+`write-role.yaml` is a separate stack, so nothing changes until you deploy it.
+It creates `xplorr-write`, a role Xplorr assumes only to carry out an action a
+person in your Xplorr organization has approved. It never touches the
+read-only role, and it has its own external ID.
+
+Each action type is a parameter, `false` by default; turn on only the ones
+you want:
+
+| Parameter | Action type | Permissions |
+|---|---|---|
+| `EnableStopIdleInstance` | `stop_idle_instance` | `ec2:StopInstances`, `ec2:StartInstances` (undo), `ec2:DescribeInstances` |
+| `EnableDeleteUnattachedEbsVolume` | `delete_unattached_ebs_volume` | `ec2:CreateSnapshot`, `ec2:DeleteVolume`, `ec2:CreateTags` (new snapshot only), `ec2:DescribeVolumes`, `ec2:DescribeSnapshots` |
+| `EnableReleaseUnassociatedEip` | `release_unassociated_eip` | `ec2:ReleaseAddress`, `ec2:DescribeAddresses` |
+
+`rightsize_instance` needs no parameter: Xplorr proposes it as a Terraform
+pull request. With `ProtectTag=true` (the default), an explicit Deny refuses
+every change to a resource tagged `xplorr:protect` = `true`. `AllowedRegions`
+limits the role to some regions. The guards and limits are the same as the
+Terraform module's; see
+[its Limits section](../terraform/README.md#limits).
+
+`customer_principal`, in the account that holds `xplorr-assumer`:
+
+```bash
+aws cloudformation deploy \
+  --stack-name xplorr-write \
+  --template-file write-role.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides EnableStopIdleInstance=true \
+    TrustedPrincipalArn=arn:aws:iam::111111111111:user/xplorr-assumer \
+    AssumingUserName=xplorr-assumer \
+    WriteExternalId="$(openssl rand -hex 16)"
+```
+
+`AssumingUserName` lets that user assume the write role. In an account
+without the user, leave it out and add the `WriteRoleArn` output to
+`AdditionalAssumableRoleArns` of the `role.yaml` stack in the account that
+holds the user.
+
+`xplorr_principal`, with the write access external ID Xplorr shows you (not
+the read-only role's):
+
+```bash
+aws cloudformation deploy \
+  --stack-name xplorr-write \
+  --template-file write-role.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides TrustMode=xplorr_principal EnableStopIdleInstance=true \
+    WriteExternalId=the-write-value-xplorr-shows-you
+```
+
+The stack outputs `AwsAccountId`, `WriteRoleName`, `WriteRoleArn`,
+`WriteExternalId` and `ActionTypes`, which is what Xplorr asks for when you
+turn on write access.
+
+There is no StackSet for the write role on purpose: write access is chosen
+account by account. To remove it, delete the stack
+(`aws cloudformation delete-stack --stack-name xplorr-write`) and turn write
+access off for the account in Xplorr. The read-only role keeps working.
+
 ## Connect it in Xplorr
 
 1. `customer_principal` only, and only if your Xplorr organization has no base
@@ -156,9 +219,10 @@ then delete the old key in the IAM console.
    also deletes their stored cost history.
 2. Delete the access keys of `xplorr-assumer` in the IAM console. CloudFormation
    cannot delete a user that still has keys it did not create.
-3. Delete the stacks, the StackSet stack first:
+3. Delete the stacks, the write role and StackSet stacks first:
 
    ```bash
+   aws cloudformation delete-stack --stack-name xplorr-write
    aws cloudformation delete-stack --stack-name xplorr-readonly-members
    aws cloudformation delete-stack --stack-name xplorr-readonly
    ```
@@ -180,7 +244,7 @@ then delete the old key in the IAM console.
 ## Validation
 
 ```bash
-cfn-lint role.yaml stackset.yaml
+cfn-lint role.yaml stackset.yaml write-role.yaml
 python3 ../../scripts/sync-stackset.py --check
 python3 ../../scripts/check-policy-drift.py
 ```

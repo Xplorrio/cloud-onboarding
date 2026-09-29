@@ -166,25 +166,32 @@ data "aws_iam_policy_document" "trust" {
 }
 
 # The only permission the customer_principal user has: assuming the Xplorr
-# role here, the listed roles elsewhere, and optionally the role of the same
-# name anywhere in one AWS Organization.
+# role here (and the write role, when enabled), the listed roles elsewhere,
+# and optionally the roles of the same names anywhere in one AWS Organization.
 data "aws_iam_policy_document" "user_assume" {
   count = local.create_user ? 1 : 0
 
   statement {
-    sid       = "AssumeXplorrRole"
-    effect    = "Allow"
-    actions   = ["sts:AssumeRole"]
-    resources = concat([module.iam_role.arn], var.user_assumable_role_arns)
+    sid     = "AssumeXplorrRole"
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    resources = concat(
+      [module.iam_role.arn],
+      var.enable_write_role ? [module.write_role[0].role_arn] : [],
+      var.user_assumable_role_arns,
+    )
   }
 
   dynamic "statement" {
     for_each = var.user_assumable_org_id != "" ? [1] : []
     content {
-      sid       = "AssumeXplorrRoleInOrganization"
-      effect    = "Allow"
-      actions   = ["sts:AssumeRole"]
-      resources = ["arn:${data.aws_partition.current.partition}:iam::*:role/${var.role_name}"]
+      sid     = "AssumeXplorrRoleInOrganization"
+      effect  = "Allow"
+      actions = ["sts:AssumeRole"]
+      resources = concat(
+        ["arn:${data.aws_partition.current.partition}:iam::*:role/${var.role_name}"],
+        var.enable_write_role ? ["arn:${data.aws_partition.current.partition}:iam::*:role/${var.write_role_name}"] : [],
+      )
 
       condition {
         test     = "StringEquals"

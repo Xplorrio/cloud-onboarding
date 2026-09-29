@@ -16,8 +16,11 @@ Pick one tool:
 | Storage Blob Data Reader for a FOCUS export | `focus_export_scopes` | az CLI step below |
 | Client secret | Not created by default; opt in with `create_client_secret` | Never created |
 | Billing roles (credits, invoices) | Guidance below | Guidance below |
+| Opt-in write access (custom role) | `enable_write_role`, off by default | `write-role.bicep`, a separate deployment |
 
-Everything granted is read only. Xplorr makes no write calls.
+Everything granted by default is read only. Write access for approved actions
+is a separate custom role that you opt into; see
+[Write access (opt in)](#write-access-opt-in).
 
 ## What it creates
 
@@ -143,7 +146,7 @@ or at a release tag:
 
 ```hcl
 module "xplorr" {
-  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//azure/terraform?ref=v0.1.1"
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//azure/terraform?ref=v0.2.0"
 
   subscription_ids = ["00000000-0000-0000-0000-000000000000"]
 }
@@ -369,6 +372,100 @@ Then enter the Azure billing account ID in Xplorr: on the **Credits** page
 when you add a credit grant (plus the billing profile ID for MCA), and on the
 **Invoices** page for invoice ingestion.
 
+## Write access (opt in)
+
+Off by default. It lets Xplorr carry out an action a person in your Xplorr
+organization has approved, and nothing else:
+
+- **A separate custom role**, `xplorr-write`, assigned to the same service
+  principal next to the read-only roles, which do not change.
+- **Only the action types you list.** Each adds the permissions of one type.
+- **Approval first.** Xplorr uses it only to carry out an approved action;
+  syncing never needs it.
+
+| Action type | Custom role actions |
+|---|---|
+| `deallocate_idle_vm` | `Microsoft.Compute/virtualMachines/deallocate/action`, and `Microsoft.Compute/virtualMachines/start/action` to undo it |
+
+Deallocating stops the VM and releases its compute, so it stops being billed
+for compute; disks and reserved public IPs stay. The reads Xplorr makes to
+check a VM's power state before and after come from Reader.
+
+Approved actions are rolling out in Xplorr. Until the console offers write
+access for your subscription, the role is assigned but unused.
+
+**Limits.**
+
+- **No tag guard in the role.** Azure RBAC conditions cover only some data
+  actions (storage blobs and queues), not virtual machine actions, so a role
+  assignment cannot say "except VMs tagged `xplorr:protect`". On Azure that
+  tag can only be honoured by Xplorr itself before it acts; Azure does not
+  enforce it. To block an action in Azure, put a `ReadOnly`
+  [resource lock](https://learn.microsoft.com/azure/azure-resource-manager/management/lock-resources)
+  on the VM or its resource group; per Microsoft's lock documentation this
+  stops everyone, Xplorr included, from starting or deallocating it.
+- **Narrow the scope instead.** Assign the role on chosen resource groups
+  only (`write_scopes`, or `resourceGroupNames` in Bicep).
+- A VM in a scale set, or one managed by another service (AKS node pools,
+  Azure Batch), may be started again by its owner. Keep write access off the
+  resource groups that hold them.
+
+### Terraform
+
+```hcl
+module "xplorr" {
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//azure/terraform?ref=v0.2.0"
+
+  subscription_ids = ["00000000-0000-0000-0000-000000000000"]
+
+  enable_write_role = true
+  write_actions     = ["deallocate_idle_vm"]
+  # write_scopes = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example"]
+}
+```
+
+One role definition is created, assignable on every subscription in
+`subscription_ids` (or on the management group), and assigned on each of
+them unless you list resource groups in `write_scopes`. `terraform output
+-json xplorr_write_access` prints what Xplorr asks for: `custom_role_id`,
+`custom_role_name`, the scopes, the action types and the permissions.
+
+To remove it, set `enable_write_role = false` and apply. That deletes the
+assignments and the role definition; the read-only roles stay.
+
+### Bicep
+
+Deploy `write-role.bicep` at subscription scope after `main.bicep`, with the
+`servicePrincipalObjectId` output as `principalId`:
+
+```bash
+cd azure/bicep
+az deployment sub create --name xplorr-write --location westeurope \
+  --template-file write-role.bicep --parameters write-role.example.bicepparam
+az deployment sub show --name xplorr-write --query properties.outputs -o json
+```
+
+It outputs `customRoleId`, `customRoleName`, `scopes`, `actionTypes` and
+`permissions`. A custom role name must be unique in the tenant, so for a
+second subscription pass another `roleName` (for example
+`xplorr-write-prod`), or use the Terraform module, which makes one definition
+for every subscription. For a management group, deploy it once per
+subscription.
+
+To remove it (a deployment does not delete what it created):
+
+```bash
+SP_OBJECT_ID=<principalId you deployed with>
+ROLE_ID=<customRoleId output>
+az role assignment delete --assignee "$SP_OBJECT_ID" --role "$ROLE_ID" \
+  --scope /subscriptions/00000000-0000-0000-0000-000000000000
+az role definition delete --name "$ROLE_ID"
+```
+
+With `resourceGroupNames`, delete the assignment on each resource group
+instead (`--scope .../resourceGroups/rg-example`). Also turn write access off
+for the subscription in Xplorr.
+
 ## Removing everything
 
 First delete the cloud accounts in Xplorr (**Infrastructure > Cloud Accounts**,
@@ -457,6 +554,7 @@ azure/
     bicepconfig.json          pins the Microsoft Graph Bicep extension
     main.bicep                subscription scope
     management-group.bicep    management group scope
+    write-role.bicep          opt-in write access, subscription scope
     modules/                  the role assignments, one module per scope
     *.example.bicepparam
 ```

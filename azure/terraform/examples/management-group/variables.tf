@@ -61,3 +61,21 @@ variable "create_client_secret" {
   type        = bool
   default     = false
 }
+
+variable "enable_write_role" {
+  description = "Opt in to write access: create the xplorr-write custom role for the action types in write_actions. Off by default."
+  type        = bool
+  default     = false
+}
+
+variable "write_actions" {
+  description = "Action types the custom role may carry out: deallocate_idle_vm."
+  type        = list(string)
+  default     = []
+}
+
+variable "write_scopes" {
+  description = "Optional resource group IDs to assign the custom role on. Empty assigns it where the read-only roles are."
+  type        = list(string)
+  default     = []
+}

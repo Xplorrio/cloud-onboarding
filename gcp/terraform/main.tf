@@ -57,6 +57,13 @@ locals {
     local.keyless ? ["iamcredentials.googleapis.com"] : [],
   )) : toset([])
 
+  # The opt-in write role's permissions per action type. Reads of the
+  # instance's state come from roles/compute.viewer above.
+  write_permissions = {
+    stop_idle_instance = ["compute.instances.stop", "compute.instances.start"]
+  }
+  write_role_permissions = sort(distinct(flatten([for a in var.write_actions : local.write_permissions[a]])))
+
   scope_grants = !var.enable_org_level_grants ? {} : merge(
     var.organization_id == null ? {} : {
       for role in var.scope_roles : "organizations/${var.organization_id}|${role}" => {
@@ -170,4 +177,34 @@ resource "google_service_account_key" "xplorr" {
   count = local.create_key ? 1 : 0
 
   service_account_id = google_service_account.xplorr.name
+}
+
+# Opt-in write access: a custom role holding only the permissions of the
+# listed action types, granted to the same service account on project_id. The
+# optional condition refuses instances tagged write_protect_tag = true.
+resource "google_project_iam_custom_role" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  project     = var.project_id
+  role_id     = var.write_role_id
+  title       = "Xplorr write"
+  description = "Opt-in write access for Xplorr approved actions: ${join(", ", var.write_actions)}. Created by https://github.com/Xplorrio/cloud-onboarding"
+  permissions = local.write_role_permissions
+}
+
+resource "google_project_iam_member" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  project = var.project_id
+  role    = google_project_iam_custom_role.write[0].name
+  member  = local.member
+
+  dynamic "condition" {
+    for_each = var.write_protect_tag != null ? [1] : []
+    content {
+      title       = "not-protected"
+      description = "Refuse instances tagged ${var.write_protect_tag} = true"
+      expression  = "!resource.matchTag('${var.write_protect_tag}', 'true')"
+    }
+  }
 }

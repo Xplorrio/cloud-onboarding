@@ -3,3 +3,8 @@ trusted_user_arn = "arn:aws:iam::111111111111:user/xplorr-assumer"
 role_name        = "xplorr-readonly"
 # Optional. Leave empty for no external ID, or paste a value from: openssl rand -hex 16
 iam_external_id = ""
+# Optional write access, off by default. After applying, add the
+# write_role_arn to user_assumable_role_arns in examples/basic too.
+enable_write_role     = false
+write_actions         = ["stop_idle_instance"]
+write_iam_external_id = ""

@@ -17,6 +17,18 @@ locals {
   # Roles go on the management group when one is given, otherwise on each subscription.
   scopes = var.management_group_id != "" ? ["/providers/Microsoft.Management/managementGroups/${var.management_group_id}"] : [for s in var.subscription_ids : "/subscriptions/${s}"]
 
+  # The opt-in write role: its permissions per action type, and where it is
+  # assigned. The definition may be assigned anywhere under local.scopes.
+  write_permissions = {
+    deallocate_idle_vm = [
+      "Microsoft.Compute/virtualMachines/deallocate/action",
+      "Microsoft.Compute/virtualMachines/start/action",
+    ]
+  }
+
+  write_role_actions = sort(distinct(flatten([for a in var.write_actions : local.write_permissions[a]])))
+  write_scopes       = var.enable_write_role ? (length(var.write_scopes) > 0 ? var.write_scopes : local.scopes) : []
+
   roles = concat(var.role_names, var.enable_carbon_optimization_reader ? ["Carbon Optimization Reader"] : [])
 
   scope_roles = {
@@ -135,4 +147,32 @@ resource "azurerm_role_assignment" "focus_export" {
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
   description                      = "Xplorr reads the FOCUS cost export"
+}
+
+# Opt-in write access: a custom role holding only the actions of the listed
+# action types, assigned to the same principal as the read-only roles. Azure
+# RBAC conditions do not cover virtual machine actions, so no tag guard can be
+# set here; see the README for the resource lock that blocks an action.
+resource "azurerm_role_definition" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  name              = var.write_role_name
+  scope             = local.scopes[0]
+  description       = "Opt-in write access for Xplorr approved actions: ${join(", ", var.write_actions)}. Created by https://github.com/Xplorrio/cloud-onboarding"
+  assignable_scopes = local.scopes
+
+  permissions {
+    actions = local.write_role_actions
+  }
+}
+
+resource "azurerm_role_assignment" "write" {
+  for_each = toset(local.write_scopes)
+
+  scope                            = each.value
+  role_definition_id               = azurerm_role_definition.write[0].role_definition_resource_id
+  principal_id                     = local.principal_object_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+  description                      = "Xplorr approved actions (opt-in write access)"
 }

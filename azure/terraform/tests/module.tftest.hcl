@@ -241,3 +241,86 @@ run "cost_management_reader_alone_rejected" {
 
   expect_failures = [var.role_names]
 }
+
+run "write_role_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_role_definition.write) == 0 && length(azurerm_role_assignment.write) == 0 && output.xplorr_write_access == null
+    error_message = "The write role must be off by default."
+  }
+}
+
+run "write_role_deallocate_on_each_subscription" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["deallocate_idle_vm"]
+  }
+
+  assert {
+    condition = azurerm_role_definition.write[0].permissions[0].actions == tolist([
+      "Microsoft.Compute/virtualMachines/deallocate/action",
+      "Microsoft.Compute/virtualMachines/start/action",
+    ])
+    error_message = "deallocate_idle_vm must grant only deallocate and start."
+  }
+
+  assert {
+    condition     = length(coalesce(azurerm_role_definition.write[0].permissions[0].data_actions, [])) == 0 && length(coalesce(azurerm_role_definition.write[0].permissions[0].not_actions, [])) == 0
+    error_message = "The custom role must hold nothing but the listed actions."
+  }
+
+  assert {
+    condition     = toset(keys(azurerm_role_assignment.write)) == toset(["/subscriptions/00000000-0000-0000-0000-000000000000", "/subscriptions/11111111-1111-1111-1111-111111111111"])
+    error_message = "Without write_scopes the role is assigned on every subscription."
+  }
+
+  assert {
+    condition     = alltrue([for k, v in azurerm_role_assignment.scope : v.role_definition_name != "xplorr-write"])
+    error_message = "The read-only assignments must not change."
+  }
+}
+
+run "write_role_on_resource_groups_only" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["deallocate_idle_vm"]
+    write_scopes      = ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example"]
+  }
+
+  assert {
+    condition     = keys(azurerm_role_assignment.write) == ["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example"]
+    error_message = "write_scopes must narrow the assignment to those resource groups."
+  }
+
+  assert {
+    condition     = azurerm_role_definition.write[0].assignable_scopes == tolist(["/subscriptions/00000000-0000-0000-0000-000000000000", "/subscriptions/11111111-1111-1111-1111-111111111111"])
+    error_message = "The definition must be assignable under the connected subscriptions."
+  }
+}
+
+run "write_role_needs_actions" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+  }
+
+  expect_failures = [var.write_actions]
+}
+
+run "unknown_write_action_rejected" {
+  command = plan
+
+  variables {
+    enable_write_role = true
+    write_actions     = ["delete_vm"]
+  }
+
+  expect_failures = [var.write_actions]
+}
+

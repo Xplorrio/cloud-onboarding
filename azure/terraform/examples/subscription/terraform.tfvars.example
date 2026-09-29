@@ -17,3 +17,11 @@ focus_export_scopes = [
 
 # Leave false: create the secret in the portal so it never reaches the state.
 create_client_secret = false
+
+# Optional write access, off by default: a separate xplorr-write custom role
+# for the approved actions you list. See the README, Write access.
+enable_write_role = false
+write_actions     = ["deallocate_idle_vm"]
+write_scopes = [
+  # "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example",
+]
