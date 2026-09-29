@@ -41,7 +41,10 @@ locals {
     local.release_eips ? ["ec2:DescribeAddresses"] : [],
   )
 
-  trusted_principals = local.customer_mode ? var.trusted_principal_arns : ["arn:${local.partition}:iam::${var.xplorr_account_id}:root"]
+  # xplorr_principal: the account of the one Xplorr role that may assume this
+  # role, narrowed to that role by the aws:PrincipalArn condition below.
+  xplorr_account_id  = split(":", var.xplorr_principal_arn)[4]
+  trusted_principals = local.customer_mode ? var.trusted_principal_arns : ["arn:${local.partition}:iam::${local.xplorr_account_id}:root"]
 
   repository = "https://github.com/Xplorrio/cloud-onboarding"
 }
@@ -175,8 +178,10 @@ data "aws_iam_policy_document" "write" {
   }
 }
 
-# Who may assume the role: the same shape as the read-only role's trust
-# policy, with the write role's own external ID.
+# Who may assume the role. customer_principal: the same principals as the
+# read-only role. xplorr_principal: only Xplorr's dedicated actions role,
+# matched exactly, never the xplorr-* pattern the read-only role trusts, and
+# the write role's own external ID.
 data "aws_iam_policy_document" "trust" {
   statement {
     sid     = "AllowAssume"
@@ -200,9 +205,9 @@ data "aws_iam_policy_document" "trust" {
     dynamic "condition" {
       for_each = local.customer_mode ? [] : [1]
       content {
-        test     = "ArnLike"
+        test     = "StringEquals"
         variable = "aws:PrincipalArn"
-        values   = ["arn:${local.partition}:iam::${var.xplorr_account_id}:role/${var.xplorr_principal_role_pattern}"]
+        values   = [var.xplorr_principal_arn]
       }
     }
   }

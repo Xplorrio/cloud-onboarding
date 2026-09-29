@@ -55,6 +55,16 @@ ALLOWED_GUIDS = {
     "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",  # Storage Blob Data Reader
 }
 
+# Commits whose message is not scanned, by full sha, each with its reason.
+# Only the message is skipped: the files of these commits are still scanned,
+# and every other commit message is scanned as before.
+ALLOWED_COMMIT_MESSAGES = {
+    # Squash merge of #1 on main. Its Co-authored-by trailer holds the
+    # repository owner's own work address, not client data, and history is
+    # not rewritten.
+    "653ceb1cf3c4d55b1eafa899ce5d8e28b1d1a116": "owner's Co-authored-by trailer on the squash merge of #1",
+}
+
 ALLOWED_EMAIL_DOMAINS = ("example.com", "example.org", "example.net")
 ALLOWED_EMAILS = {"git@github.com", "security@xplorr.io"}  # security@ is the published reporting address
 
@@ -209,6 +219,8 @@ def main():
                 name = parts[1] if len(parts) > 1 else oid
                 problems += scan(f"history:{name}@{oid[:8]}", git("cat-file", "-p", oid).decode("utf-8", errors="replace"))
             for commit in git("rev-list", "--all").decode().split():
+                if commit in ALLOWED_COMMIT_MESSAGES:
+                    continue
                 problems += scan(f"commit:{commit[:8]}", git("log", "-1", "--format=%B", commit).decode())
 
     if problems:

@@ -41,6 +41,9 @@ approved. You choose the action types; only their permissions are granted.
 | `rightsize_instance` | None: a Terraform pull request |
 
 Resources tagged `xplorr:protect` = `true` are refused by an explicit Deny.
+In keyless mode the write role trusts only Xplorr's dedicated actions role,
+`arn:aws:iam::732121667940:role/xplorr-actions`, never the `xplorr-*` roles
+the read-only role trusts.
 
 | Tool | How to turn it on |
 |---|---|

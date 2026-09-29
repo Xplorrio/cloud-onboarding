@@ -47,9 +47,13 @@ Use `customer_principal` until Xplorr announces keyless onboarding.
 
 Off by default everywhere. When you turn it on:
 
-- It is a **separate role**, never merged into the read-only one: an IAM role
-  `xplorr-write` with its own external ID (AWS), a custom role `xplorr-write`
-  (Azure), a custom role `xplorrWrite` (Google Cloud).
+- It is a **separate role for a separate identity**, never merged into the
+  read-only one: an IAM role `xplorr-write` with its own external ID that
+  only Xplorr's dedicated actions role may assume (AWS); a custom role
+  `xplorr-write` held by its own app registration and service principal
+  (Azure); a custom role `xplorrWrite` held by its own service account,
+  `xplorr-write@<project>` (Google Cloud). The identities Xplorr syncs with
+  can never make a change.
 - It grants **only the action types you list**, one permission set per type.
 - Xplorr uses it **only to carry out an action someone approved** in your
   Xplorr organization. Syncing never uses it.

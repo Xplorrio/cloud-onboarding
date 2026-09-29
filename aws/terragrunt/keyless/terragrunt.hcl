@@ -23,4 +23,6 @@ inputs = {
   enable_write_role     = false
   write_actions         = ["stop_idle_instance"]
   write_iam_external_id = "the-write-value-xplorr-shows-you"
+  # Only Xplorr's actions role may assume the write role.
+  write_xplorr_principal_arn = "arn:aws:iam::732121667940:role/xplorr-actions"
 }

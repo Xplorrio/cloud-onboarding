@@ -93,6 +93,7 @@ run "shellcheck" check_shell
 run "gitleaks (history)" gitleaks git --redact --no-banner .
 run "gitleaks (working tree)" gitleaks dir --redact --no-banner .
 run "client data" python3 scripts/check-client-data.py
+run "client data tests" python3 scripts/test-check-client-data.py
 run "style" python3 scripts/check-style.py
 
 printf '\n'

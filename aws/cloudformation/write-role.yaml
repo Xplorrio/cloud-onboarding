@@ -21,7 +21,7 @@ Metadata:
           - WriteExternalId
           - TrustedPrincipalArn
           - AssumingUserName
-          - XplorrAccountId
+          - XplorrPrincipalArn
       - Label:
           default: Role
         Parameters:
@@ -43,8 +43,8 @@ Metadata:
         default: IAM user that assumes your read-only role
       AssumingUserName:
         default: Let that user (in this account) assume the write role
-      XplorrAccountId:
-        default: Xplorr AWS account (xplorr_principal only)
+      XplorrPrincipalArn:
+        default: Xplorr actions role (xplorr_principal only)
       RoleName:
         default: Write role name
       ProtectTag:
@@ -89,8 +89,8 @@ Parameters:
       - xplorr_principal
     Description: >-
       Use the same mode as your read-only role. customer_principal trusts the IAM
-      user in TrustedPrincipalArn. xplorr_principal trusts Xplorr roles named
-      xplorr-* in Xplorr's AWS account and needs WriteExternalId.
+      user in TrustedPrincipalArn. xplorr_principal trusts only Xplorr's actions
+      role (XplorrPrincipalArn), matched exactly, and needs WriteExternalId.
   WriteExternalId:
     Type: String
     Default: ""
@@ -115,13 +115,15 @@ Parameters:
       xplorr-assumer), name it here and this stack lets it assume the write role.
       For a user in another account, add the RoleArn output to
       AdditionalAssumableRoleArns of the role.yaml stack there instead.
-  XplorrAccountId:
+  XplorrPrincipalArn:
     Type: String
-    Default: "732121667940"
-    AllowedPattern: "^[0-9]{12}$"
+    Default: arn:aws:iam::732121667940:role/xplorr-actions
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$"
+    ConstraintDescription: one exact IAM role ARN, without wildcards
     Description: >-
-      xplorr_principal only. The Xplorr AWS account the role trusts. Only its roles
-      named xplorr-* may assume this role.
+      xplorr_principal only. The one Xplorr role allowed to assume the write role,
+      Xplorr's dedicated actions role, matched exactly with aws:PrincipalArn. Xplorr's
+      sync role, which assumes your read-only role, cannot assume this one.
   RoleName:
     Type: String
     Default: xplorr-write
@@ -194,7 +196,9 @@ Resources:
               AWS: !If
                 - IsCustomerPrincipal
                 - !Ref TrustedPrincipalArn
-                - !Sub arn:${AWS::Partition}:iam::${XplorrAccountId}:root
+                - !Sub
+                  - arn:${AWS::Partition}:iam::${XplorrAccount}:root
+                  - XplorrAccount: !Select [4, !Split [":", !Ref XplorrPrincipalArn]]
             Condition: !If
               - IsCustomerPrincipal
               - !If
@@ -202,12 +206,12 @@ Resources:
                 - StringEquals:
                     sts:ExternalId: !Ref WriteExternalId
                 - !Ref AWS::NoValue
-              # xplorr_principal: the same shape as the read-only role's trust,
-              # with the write role's own external ID.
+              # xplorr_principal: only Xplorr's actions role, matched exactly
+              # (never the xplorr-* pattern the read-only role trusts), and the
+              # write role's own external ID.
               - StringEquals:
                   sts:ExternalId: !Ref WriteExternalId
-                ArnLike:
-                  aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${XplorrAccountId}:role/xplorr-*
+                  aws:PrincipalArn: !Ref XplorrPrincipalArn
       Policies:
         - PolicyName: xplorr-write
           PolicyDocument:

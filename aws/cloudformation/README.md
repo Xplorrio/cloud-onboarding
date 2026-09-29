@@ -167,7 +167,10 @@ without the user, leave it out and add the `WriteRoleArn` output to
 holds the user.
 
 `xplorr_principal`, with the write access external ID Xplorr shows you (not
-the read-only role's):
+the read-only role's). The role then trusts only Xplorr's dedicated actions
+role, `XplorrPrincipalArn` (default
+`arn:aws:iam::732121667940:role/xplorr-actions`), matched exactly; Xplorr's
+sync role, which the read-only role trusts, cannot assume it:
 
 ```bash
 aws cloudformation deploy \

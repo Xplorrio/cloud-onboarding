@@ -79,3 +79,9 @@ variable "write_scopes" {
   type        = list(string)
   default     = []
 }
+
+variable "xplorr_write_application_id" {
+  description = "With enable_write_role, xplorr_principal only. Application (client) ID of Xplorr's separate write app, from Xplorr."
+  type        = string
+  default     = ""
+}

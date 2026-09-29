@@ -137,7 +137,7 @@ run "allowed_regions" {
   }
 }
 
-run "xplorr_principal_trust_matches_the_read_role_shape" {
+run "xplorr_principal_trusts_only_the_actions_role" {
   command = plan
 
   variables {
@@ -158,9 +158,28 @@ run "xplorr_principal_trust_matches_the_read_role_shape" {
   }
 
   assert {
-    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.ArnLike["aws:PrincipalArn"] == "arn:aws:iam::732121667940:role/xplorr-*"
-    error_message = "xplorr_principal must be limited to Xplorr roles named xplorr-*."
+    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.StringEquals["aws:PrincipalArn"] == "arn:aws:iam::732121667940:role/xplorr-actions"
+    error_message = "xplorr_principal must trust only the xplorr-actions role, matched exactly."
   }
+
+  assert {
+    condition     = !can(jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.ArnLike)
+    error_message = "The write role must not use the xplorr-* pattern the read-only role trusts."
+  }
+}
+
+run "xplorr_principal_arn_rejects_wildcards" {
+  command = plan
+
+  variables {
+    actions                = ["stop_idle_instance"]
+    trust_mode             = "xplorr_principal"
+    trusted_principal_arns = []
+    iam_external_id        = "example-write-external-id"
+    xplorr_principal_arn   = "arn:aws:iam::732121667940:role/xplorr-*"
+  }
+
+  expect_failures = [var.xplorr_principal_arn]
 }
 
 run "xplorr_principal_requires_external_id" {

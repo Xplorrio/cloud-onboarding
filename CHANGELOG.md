@@ -15,30 +15,44 @@ changes for existing users until they turn write access on.
   granted on its own:
   - AWS: `stop_idle_instance`, `delete_unattached_ebs_volume` and
     `release_unassociated_eip`. A separate `xplorr-write` role with its own
-    external ID and the same trust shape as the read-only role (the
-    `xplorr-assumer` user, or Xplorr's account `732121667940` limited to its
-    `xplorr-*` roles). An explicit Deny refuses resources tagged
+    external ID. In `customer_principal` mode it trusts the same
+    `xplorr-assumer` user as the read-only role. In `xplorr_principal` mode it
+    trusts only Xplorr's dedicated actions role,
+    `arn:aws:iam::732121667940:role/xplorr-actions`, matched exactly
+    (`aws:PrincipalArn` `StringEquals`; `write_xplorr_principal_arn`,
+    `XplorrPrincipalArn`), not the `xplorr-*` roles the read-only role trusts. An explicit Deny refuses resources tagged
     `xplorr:protect` = `true`; optional region limit. Terraform
     (`enable_write_role`, `write_actions`, `write_iam_external_id`, and the
     standalone `aws/terraform/modules/write-role`), Terragrunt (`write-role`
     folder, or the same inputs in `single-account` and `keyless`) and
     CloudFormation (`write-role.yaml`, a separate stack).
-  - Azure: `deallocate_idle_vm`, a custom role `xplorr-write` assigned to the
-    same service principal, on the subscriptions, the management group or
-    chosen resource groups. Terraform (`enable_write_role`) and Bicep
-    (`write-role.bicep`).
+  - Azure: `deallocate_idle_vm`, a custom role `xplorr-write` assigned to a
+    separate identity: its own app registration and service principal
+    `xplorr-write` (no secret unless you opt in), or Xplorr's separate write
+    app in `xplorr_principal` mode. On the subscriptions, the management group
+    or chosen resource groups. Terraform (`enable_write_role`) and Bicep
+    (`write-role.bicep`), both outputting the write client ID and tenant ID.
   - Google Cloud: `stop_idle_instance`, a custom role `xplorrWrite` granted to
-    the same service account, with an optional IAM condition on a Resource
-    Manager tag. Terraform (`enable_write_role`) and `gcloud.sh`
-    (`--enable-write-action`).
+    a separate service account, `xplorr-write@<project>`, with its own key or,
+    keyless, impersonated by Xplorr's separate actions service account. An
+    optional IAM condition on a Resource Manager tag. Terraform
+    (`enable_write_role`) and `gcloud.sh` (`--enable-write-action`).
   - `rightsize_instance` needs no cloud permission: it is a Terraform pull
     request.
 - Outputs for the values Xplorr asks for when you turn on write access:
   `xplorr_write_access_form` (AWS), `xplorr_write_access` (Azure, Google
   Cloud), and the matching stack and deployment outputs.
 - `scripts/check-policy-drift.py` also compares the AWS write policy between
-  Terraform and CloudFormation. CI validates the Terragrunt `write-role`
-  folder.
+  Terraform and CloudFormation, and the Xplorr actions role the write role
+  trusts. CI validates the Terragrunt `write-role` folder.
+
+### Changed
+
+- `scripts/check-client-data.py` skips the message of one reviewed commit
+  on main (`653ceb1`, the owner's own Co-authored-by trailer), listed by full
+  sha with its reason in `ALLOWED_COMMIT_MESSAGES`. Its files are still
+  scanned, and any other match still fails; `scripts/test-check-client-data.py`
+  proves both and runs in CI.
 
 ## v0.1.1 (2026-09-26)
 

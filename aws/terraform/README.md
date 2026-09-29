@@ -287,9 +287,13 @@ the same `trust_mode`:
   account, add its `write_role_arn` to `user_assumable_role_arns` where the
   user is created; with `user_assumable_org_id`, the user may assume
   `write_role_name` in any account of the organization.
-- `xplorr_principal`: it trusts Xplorr's account `732121667940`, only its
-  roles named `xplorr-*` (`aws:PrincipalArn`), with `write_iam_external_id`
-  required. Keep the `xplorr-` prefix in `write_role_name`.
+- `xplorr_principal`: it trusts **only Xplorr's dedicated actions role**,
+  `arn:aws:iam::732121667940:role/xplorr-actions`, matched exactly
+  (`aws:PrincipalArn` with `StringEquals`, set by
+  `write_xplorr_principal_arn`), with `write_iam_external_id` required. The
+  read-only role keeps trusting Xplorr roles named `xplorr-*`, so Xplorr's
+  sync role can read but can never assume the write role. Keep the `xplorr-`
+  prefix in `write_role_name`.
 
 To create only the write role in an account whose read-only role is managed
 elsewhere, use the [`modules/write-role`](modules/write-role) module on its
@@ -328,6 +332,7 @@ Xplorr, so it stops offering actions there.
 | `write_actions` | `[]` | With `enable_write_role`: `stop_idle_instance`, `delete_unattached_ebs_volume`, `release_unassociated_eip` |
 | `write_role_name` | `xplorr-write` | Name of the write role; must start with `xplorr-` |
 | `write_iam_external_id` | `""` | The write role's own external ID. Required for `xplorr_principal`; must differ from `iam_external_id` |
+| `write_xplorr_principal_arn` | `arn:aws:iam::732121667940:role/xplorr-actions` | `xplorr_principal`: the one Xplorr role the write role trusts, matched exactly |
 | `write_protect_tag_key` | `xplorr:protect` | Resources tagged with it and the value `true` are refused. `""` turns the guard off |
 | `write_allowed_regions` | `[]` | Regions the write role may act in. Empty means every region |
 
@@ -343,6 +348,7 @@ Xplorr, so it stops offering actions there.
 | `next_steps` | What to do after apply (`terraform output -raw next_steps`) |
 | `xplorr_write_access_form` | With `enable_write_role`: `aws_account_id`, `write_role_name`, `write_role_arn`, `write_iam_external_id`, `actions` |
 | `write_role_arn`, `write_role_name`, `write_iam_external_id` | The same values one by one |
+| `write_trusted_principal` | Who may assume the write role: the read-only role's principals, or the Xplorr actions role ARN |
 | `write_granted_permissions` | Every IAM action the write role allows |
 
 ## Tests

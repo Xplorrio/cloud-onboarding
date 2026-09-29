@@ -39,6 +39,11 @@ output "protect_tag_key" {
   value       = var.protect_tag_key != "" ? var.protect_tag_key : null
 }
 
+output "trusted_principal" {
+  description = "Who may assume the role: the principals listed (customer_principal), or the one Xplorr actions role ARN (xplorr_principal)."
+  value       = local.customer_mode ? var.trusted_principal_arns : [var.xplorr_principal_arn]
+}
+
 output "trust_mode" {
   description = "The trust mode this role was created with."
   value       = var.trust_mode

@@ -31,7 +31,10 @@ That user also needs `sts:AssumeRole` on the new role: add `role_arn` to
 `user_assumable_role_arns` (Terraform) or `AdditionalAssumableRoleArns`
 (CloudFormation) where the user is created.
 
-`xplorr_principal`, trusting Xplorr's account like a keyless read-only role:
+`xplorr_principal`, trusting only Xplorr's dedicated actions role
+(`arn:aws:iam::732121667940:role/xplorr-actions`, matched exactly with
+`aws:PrincipalArn`), never the `xplorr-*` roles a keyless read-only role
+trusts:
 
 ```hcl
 module "xplorr_write" {
@@ -67,8 +70,7 @@ The limits are listed in the parent README under
 | `trust_mode` | `customer_principal` | The same mode as your read-only role |
 | `role_name` | `xplorr-write` | Must start with `xplorr-` |
 | `trusted_principal_arns` | `[]` | `customer_principal`, required there: the user that assumes the read-only role |
-| `xplorr_account_id` | `732121667940` | `xplorr_principal`: Xplorr's AWS account |
-| `xplorr_principal_role_pattern` | `xplorr-*` | `xplorr_principal`: Xplorr roles allowed to assume the role |
+| `xplorr_principal_arn` | `arn:aws:iam::732121667940:role/xplorr-actions` | `xplorr_principal`: the one Xplorr role allowed to assume the role, matched exactly; no wildcards |
 | `iam_external_id` | `""` | The write role's own external ID. Required for `xplorr_principal` |
 | `protect_tag_key` | `xplorr:protect` | Resources tagged with it and the value `true` are refused. `""` turns the guard off |
 | `allowed_regions` | `[]` | Regions the role may act in. Empty means every region |
@@ -83,6 +85,7 @@ The limits are listed in the parent README under
 | `xplorr_write_access_form` | `aws_account_id`, `write_role_name`, `write_role_arn`, `write_iam_external_id`, `actions` |
 | `role_arn`, `role_name`, `iam_external_id`, `actions` | The same values one by one |
 | `granted_permissions` | Every IAM action the role allows |
+| `trusted_principal` | Who may assume the role |
 | `protect_tag_key` | The protect tag key, or null |
 | `trust_mode` | The trust mode used |
 

@@ -27,7 +27,12 @@ locals {
   }
 
   write_role_actions = sort(distinct(flatten([for a in var.write_actions : local.write_permissions[a]])))
-  write_scopes       = var.enable_write_role ? (length(var.write_scopes) > 0 ? var.write_scopes : local.scopes) : []
+
+  # The separate write identity.
+  create_write_app          = var.enable_write_role && local.customer_mode
+  write_principal_object_id = !var.enable_write_role ? null : (local.customer_mode ? trimprefix(module.write_service_principal[0].service_principal_id, "/servicePrincipals/") : azuread_service_principal.xplorr_write[0].object_id)
+  write_client_id           = !var.enable_write_role ? null : (local.customer_mode ? module.write_service_principal[0].service_principal_client_id : var.xplorr_write_application_id)
+  write_scopes              = var.enable_write_role ? (length(var.write_scopes) > 0 ? var.write_scopes : local.scopes) : []
 
   roles = concat(var.role_names, var.enable_carbon_optimization_reader ? ["Carbon Optimization Reader"] : [])
 
@@ -149,10 +154,46 @@ resource "azurerm_role_assignment" "focus_export" {
   description                      = "Xplorr reads the FOCUS cost export"
 }
 
-# Opt-in write access: a custom role holding only the actions of the listed
-# action types, assigned to the same principal as the read-only roles. Azure
-# RBAC conditions do not cover virtual machine actions, so no tag guard can be
-# set here; see the README for the resource lock that blocks an action.
+# Opt-in write access: a separate identity, and a custom role holding only
+# the actions of the listed action types, assigned to that identity only. The
+# read-only service principal never gets it.
+#
+# customer_principal: a second single tenant app registration and service
+# principal, set up exactly like the read-only one (no Graph permissions, no
+# secret unless you opt in).
+module "write_service_principal" {
+  source  = "terraform-az-modules/service-principle/azurerm"
+  version = "1.0.0"
+  count   = local.create_write_app ? 1 : 0
+
+  name                      = var.write_display_name
+  owner_object_id           = local.owner_object_id
+  secret_map                = var.write_create_client_secret ? { xplorr = var.client_secret_duration } : {}
+  enable_api_permission     = false
+  application_roles         = []
+  redirect_uris             = []
+  front_channel_logout_urls = []
+  enable_role_assignment    = false
+}
+
+check "write_client_secret_in_state" {
+  assert {
+    condition     = !(local.create_write_app && var.write_create_client_secret)
+    error_message = "WARNING: write_create_client_secret is true, so the write app's client secret is stored in plain text in the Terraform state. Anyone who can read the state can make the approved changes this role allows. Prefer creating the secret in the portal."
+  }
+}
+
+# xplorr_principal: the service principal of Xplorr's separate write app, not
+# the read-only app's.
+resource "azuread_service_principal" "xplorr_write" {
+  count = var.enable_write_role && !local.customer_mode ? 1 : 0
+
+  client_id    = var.xplorr_write_application_id
+  use_existing = true
+}
+
+# Azure RBAC conditions do not cover virtual machine actions, so no tag guard
+# can be set here; see the README for the resource lock that blocks an action.
 resource "azurerm_role_definition" "write" {
   count = var.enable_write_role ? 1 : 0
 
@@ -171,7 +212,7 @@ resource "azurerm_role_assignment" "write" {
 
   scope                            = each.value
   role_definition_id               = azurerm_role_definition.write[0].role_definition_resource_id
-  principal_id                     = local.principal_object_id
+  principal_id                     = local.write_principal_object_id
   principal_type                   = "ServicePrincipal"
   skip_service_principal_aad_check = true
   description                      = "Xplorr approved actions (opt-in write access)"

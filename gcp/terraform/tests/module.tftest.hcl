@@ -29,6 +29,14 @@ mock_provider "google" {
   }
 }
 
+override_resource {
+  target = google_service_account.write[0]
+  values = {
+    email = "xplorr-write@my-project.iam.gserviceaccount.com"
+    name  = "projects/my-project/serviceAccounts/xplorr-write@my-project.iam.gserviceaccount.com"
+  }
+}
+
 variables {
   project_id = "my-project"
 }
@@ -236,8 +244,23 @@ run "write_role_stop_instance" {
   }
 
   assert {
-    condition     = google_project_iam_member.write[0].role == "projects/my-project/roles/xplorrWrite" && google_project_iam_member.write[0].member == "serviceAccount:xplorr-reader@my-project.iam.gserviceaccount.com"
-    error_message = "The custom role must be granted to the Xplorr service account."
+    condition     = google_project_iam_member.write[0].role == "projects/my-project/roles/xplorrWrite" && google_project_iam_member.write[0].member == "serviceAccount:xplorr-write@my-project.iam.gserviceaccount.com"
+    error_message = "The custom role must be granted to the separate write service account."
+  }
+
+  assert {
+    condition     = google_service_account.write[0].account_id == "xplorr-write" && output.write_service_account_email == "xplorr-write@my-project.iam.gserviceaccount.com" && output.xplorr_write_access.service_account == "xplorr-write@my-project.iam.gserviceaccount.com"
+    error_message = "Write access must use its own service account, xplorr-write."
+  }
+
+  assert {
+    condition     = alltrue([for k, v in google_project_iam_member.xplorr : v.member == "serviceAccount:xplorr-reader@my-project.iam.gserviceaccount.com"])
+    error_message = "The viewer roles must stay on the read service account."
+  }
+
+  assert {
+    condition     = length(google_service_account_key.write) == 0 && strcontains(output.write_key_create_command, "--iam-account=xplorr-write@my-project.iam.gserviceaccount.com")
+    error_message = "No write key by default; the output must give the command for the write service account."
   }
 
   assert {
@@ -286,5 +309,57 @@ run "bad_protect_tag_rejected" {
   }
 
   expect_failures = [var.write_protect_tag]
+}
+
+run "write_role_keyless_impersonation" {
+  command = apply
+
+  variables {
+    trust_mode                         = "xplorr_principal"
+    xplorr_service_account_email       = "xplorr-connector@example-project.iam.gserviceaccount.com"
+    enable_write_role                  = true
+    write_actions                      = ["stop_idle_instance"]
+    xplorr_write_service_account_email = "xplorr-actions@example-project.iam.gserviceaccount.com"
+  }
+
+  assert {
+    condition     = google_service_account_iam_member.xplorr_write_impersonation[0].member == "serviceAccount:xplorr-actions@example-project.iam.gserviceaccount.com" && google_service_account_iam_member.xplorr_write_impersonation[0].service_account_id == "projects/my-project/serviceAccounts/xplorr-write@my-project.iam.gserviceaccount.com"
+    error_message = "Only Xplorr's actions service account may impersonate the write service account."
+  }
+
+  assert {
+    condition     = google_service_account_iam_member.xplorr_impersonation[0].member == "serviceAccount:xplorr-connector@example-project.iam.gserviceaccount.com"
+    error_message = "The read service account's impersonation must not change."
+  }
+
+  assert {
+    condition     = output.write_key_create_command == null
+    error_message = "Keyless write access needs no key."
+  }
+}
+
+run "write_role_keyless_needs_actions_principal" {
+  command = plan
+
+  variables {
+    trust_mode                   = "xplorr_principal"
+    xplorr_service_account_email = "xplorr-connector@example-project.iam.gserviceaccount.com"
+    enable_write_role            = true
+    write_actions                = ["stop_idle_instance"]
+  }
+
+  expect_failures = [var.xplorr_write_service_account_email]
+}
+
+run "write_service_account_must_differ" {
+  command = plan
+
+  variables {
+    enable_write_role        = true
+    write_actions            = ["stop_idle_instance"]
+    write_service_account_id = "xplorr-reader"
+  }
+
+  expect_failures = [var.write_service_account_id]
 }
 

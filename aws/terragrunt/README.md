@@ -63,7 +63,8 @@ approved actions:
   [`modules/write-role`](../terraform/modules/write-role) and creates only the
   write role. Set `trusted_principal_arns` to the user that assumes your
   read-only role and add the new `role_arn` to that user's
-  `user_assumable_role_arns`, or switch it to `xplorr_principal`. For a pinned
+  `user_assumable_role_arns`, or switch it to `xplorr_principal`, where it
+  trusts only `xplorr_principal_arn` (Xplorr's actions role). For a pinned
   release set `XPLORR_WRITE_MODULE_SOURCE`, as shown in `root.hcl`.
 
 What each action type allows, its guards and limits are in the

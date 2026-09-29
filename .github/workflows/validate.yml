@@ -175,5 +175,8 @@ jobs:
           CLIENT_DATA_HMAC_KEY: ${{ secrets.CLIENT_DATA_HMAC_KEY }}
         run: python scripts/check-client-data.py
 
+      - name: Client data check tests (commit allowlist)
+        run: python scripts/test-check-client-data.py
+
       - name: Style (no em dash, no filler words)
         run: python scripts/check-style.py

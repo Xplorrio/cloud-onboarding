@@ -338,6 +338,28 @@ run "keyless_write_role_needs_its_external_id" {
   expect_failures = [var.write_iam_external_id]
 }
 
+run "keyless_write_role_trusts_only_the_actions_role" {
+  command = plan
+
+  variables {
+    trust_mode            = "xplorr_principal"
+    iam_external_id       = "example-read-external-id"
+    enable_write_role     = true
+    write_actions         = ["stop_idle_instance"]
+    write_iam_external_id = "example-write-external-id"
+  }
+
+  assert {
+    condition     = output.write_trusted_principal == tolist(["arn:aws:iam::732121667940:role/xplorr-actions"])
+    error_message = "The keyless write role must trust only xplorr-actions."
+  }
+
+  assert {
+    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.ArnLike["aws:PrincipalArn"] == "arn:aws:iam::732121667940:role/xplorr-*"
+    error_message = "The read-only role's trust must not change."
+  }
+}
+
 run "write_role_in_organization" {
   command = plan
 

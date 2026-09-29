@@ -377,8 +377,13 @@ when you add a credit grant (plus the billing profile ID for MCA), and on the
 Off by default. It lets Xplorr carry out an action a person in your Xplorr
 organization has approved, and nothing else:
 
-- **A separate custom role**, `xplorr-write`, assigned to the same service
-  principal next to the read-only roles, which do not change.
+- **A separate identity.** In `customer_principal` mode the templates create
+  a second app registration and service principal, `xplorr-write`, set up
+  like `xplorr-reader` (no Graph permissions, no secret unless you opt in).
+  In `xplorr_principal` mode it is the service principal of Xplorr's separate
+  write app (`xplorr_write_application_id`), never its read-only app. The
+  read-only identity and its roles do not change, and never get write access.
+- **A separate custom role**, `xplorr-write`, assigned to that identity only.
 - **Only the action types you list.** Each adds the permissions of one type.
 - **Approval first.** Xplorr uses it only to carry out an approved action;
   syncing never needs it.
@@ -389,7 +394,7 @@ organization has approved, and nothing else:
 
 Deallocating stops the VM and releases its compute, so it stops being billed
 for compute; disks and reserved public IPs stay. The reads Xplorr makes to
-check a VM's power state before and after come from Reader.
+check a VM's power state before and after use the read-only identity.
 
 Approved actions are rolling out in Xplorr. Until the console offers write
 access for your subscription, the role is assigned but unused.
@@ -425,18 +430,36 @@ module "xplorr" {
 ```
 
 One role definition is created, assignable on every subscription in
-`subscription_ids` (or on the management group), and assigned on each of
-them unless you list resource groups in `write_scopes`. `terraform output
--json xplorr_write_access` prints what Xplorr asks for: `custom_role_id`,
-`custom_role_name`, the scopes, the action types and the permissions.
+`subscription_ids` (or on the management group), and assigned to the write
+identity on each of them unless you list resource groups in `write_scopes`.
+`terraform output -json xplorr_write_access` prints what Xplorr asks for: the
+write identity's `client_id`, `tenant_id` and `service_principal_object_id`,
+a `credentials_json` per subscription with a `PASTE_THE_WRITE_CLIENT_SECRET_VALUE`
+placeholder, `custom_role_id`, `custom_role_name`, the scopes, the action
+types and the permissions.
+
+The write app's client secret follows the read-only app's pattern: create it
+yourself in the portal (**App registrations > xplorr-write > Certificates &
+secrets**) or with
+`az ad app credential reset --id <write client_id> --append --display-name xplorr --years 2 --query password -o tsv`.
+`write_create_client_secret = true` creates it in Terraform instead, stored in
+plain text in the state (sensitive output `write_credentials_json_with_secret`).
+Inputs: `write_display_name` (default `xplorr-write`),
+`write_create_client_secret`, and in `xplorr_principal` mode
+`xplorr_write_application_id`, which Xplorr shows you and which must differ
+from `xplorr_application_id`.
 
 To remove it, set `enable_write_role = false` and apply. That deletes the
-assignments and the role definition; the read-only roles stay.
+assignments, the role definition and the write app registration; the
+read-only identity and roles stay.
 
 ### Bicep
 
-Deploy `write-role.bicep` at subscription scope after `main.bicep`, with the
-`servicePrincipalObjectId` output as `principalId`:
+Deploy `write-role.bicep` at subscription scope after `main.bicep`. It
+creates its own app registration and service principal, `xplorr-write`, with
+the Graph extension (or, with `trustMode = 'xplorr_principal'`, the service
+principal of Xplorr's write app from `xplorrWriteApplicationId`), and assigns
+the custom role to it only:
 
 ```bash
 cd azure/bicep
@@ -445,8 +468,12 @@ az deployment sub create --name xplorr-write --location westeurope \
 az deployment sub show --name xplorr-write --query properties.outputs -o json
 ```
 
-It outputs `customRoleId`, `customRoleName`, `scopes`, `actionTypes` and
-`permissions`. A custom role name must be unique in the tenant, so for a
+It outputs `tenantId`, `clientId`, `servicePrincipalObjectId` and
+`credentialsJson` for the write identity, plus `customRoleId`,
+`customRoleName`, `scopes`, `actionTypes` and `permissions`. Bicep creates no
+secret: create the write app's secret with the az command above.
+`existingPrincipalObjectId` and `existingClientId` take a principal you
+created for write access yourself; never pass the read-only one. A custom role name must be unique in the tenant, so for a
 second subscription pass another `roleName` (for example
 `xplorr-write-prod`), or use the Terraform module, which makes one definition
 for every subscription. For a management group, deploy it once per
@@ -455,11 +482,13 @@ subscription.
 To remove it (a deployment does not delete what it created):
 
 ```bash
-SP_OBJECT_ID=<principalId you deployed with>
+WRITE_SP_OBJECT_ID=<servicePrincipalObjectId output of the write deployment>
+WRITE_CLIENT_ID=<clientId output of the write deployment>
 ROLE_ID=<customRoleId output>
-az role assignment delete --assignee "$SP_OBJECT_ID" --role "$ROLE_ID" \
+az role assignment delete --assignee "$WRITE_SP_OBJECT_ID" --role "$ROLE_ID" \
   --scope /subscriptions/00000000-0000-0000-0000-000000000000
 az role definition delete --name "$ROLE_ID"
+az ad app delete --id "$WRITE_CLIENT_ID"   # customer_principal: the write app and its secrets
 ```
 
 With `resourceGroupNames`, delete the assignment on each resource group
@@ -554,7 +583,7 @@ azure/
     bicepconfig.json          pins the Microsoft Graph Bicep extension
     main.bicep                subscription scope
     management-group.bicep    management group scope
-    write-role.bicep          opt-in write access, subscription scope
+    write-role.bicep          opt-in write access: its own identity and custom role
     modules/                  the role assignments, one module per scope
     *.example.bicepparam
 ```

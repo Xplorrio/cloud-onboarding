@@ -83,6 +83,11 @@ output "write_iam_external_id" {
   value       = var.enable_write_role ? module.write_role[0].iam_external_id : null
 }
 
+output "write_trusted_principal" {
+  description = "With enable_write_role. Who may assume the write role: the same principals as the read-only role (customer_principal), or only Xplorr's actions role ARN (xplorr_principal)."
+  value       = var.enable_write_role ? module.write_role[0].trusted_principal : null
+}
+
 output "write_granted_permissions" {
   description = "With enable_write_role. Every IAM action the write role allows."
   value       = var.enable_write_role ? module.write_role[0].granted_permissions : null

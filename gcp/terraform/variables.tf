@@ -188,11 +188,12 @@ variable "enable_apis" {
   default     = true
 }
 
-# Opt-in write access. Off by default. A separate custom role bound to the
-# same service account; the viewer roles above are never changed.
+# Opt-in write access. Off by default. A separate custom role granted to a
+# separate service account; the read service account and its viewer roles are
+# never changed.
 
 variable "enable_write_role" {
-  description = "Create the xplorrWrite custom role in project_id and grant it to the Xplorr service account, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The viewer roles are not changed."
+  description = "Create a separate service account (write_service_account_id) and the xplorrWrite custom role in project_id, granted to that service account only, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The read service account and its viewer roles are not changed."
   type        = bool
   default     = false
 }
@@ -210,6 +211,33 @@ variable "write_actions" {
   validation {
     condition     = alltrue([for a in var.write_actions : contains(["stop_idle_instance"], a)])
     error_message = "write_actions may hold only stop_idle_instance on Google Cloud."
+  }
+}
+
+variable "write_service_account_id" {
+  description = "With enable_write_role. Account id (the part before the @) of the separate service account that holds the write role."
+  type        = string
+  default     = "xplorr-write"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.write_service_account_id)) && var.write_service_account_id != var.service_account_id
+    error_message = "write_service_account_id must be 6 to 30 lowercase letters, digits or hyphens, and differ from service_account_id."
+  }
+}
+
+variable "xplorr_write_service_account_email" {
+  description = "With enable_write_role, xplorr_principal only, and required there: Xplorr's separate service account for actions, allowed to impersonate the write service account. Xplorr shows it when you turn on write access; it is not xplorr_service_account_email. There is no default."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = !var.enable_write_role || var.trust_mode != "xplorr_principal" || can(regex("^[a-z][a-z0-9-]{4,29}@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", coalesce(var.xplorr_write_service_account_email, "none")))
+    error_message = "Write access in xplorr_principal mode needs xplorr_write_service_account_email, Xplorr's actions service account."
+  }
+
+  validation {
+    condition     = var.xplorr_write_service_account_email == null || var.xplorr_write_service_account_email != var.xplorr_service_account_email
+    error_message = "xplorr_write_service_account_email must differ from xplorr_service_account_email: write access uses a separate identity."
   }
 }
 

@@ -230,6 +230,12 @@ variable "write_iam_external_id" {
   }
 }
 
+variable "write_xplorr_principal_arn" {
+  description = "With enable_write_role, xplorr_principal only. The one Xplorr role allowed to assume the write role, matched exactly: Xplorr's dedicated actions role. The read-only role keeps trusting Xplorr roles named xplorr-*."
+  type        = string
+  default     = "arn:aws:iam::732121667940:role/xplorr-actions"
+}
+
 variable "write_protect_tag_key" {
   description = "With enable_write_role. Resources tagged with this key and the value true (any case) are refused by an explicit Deny. An empty string turns the guard off."
   type        = string

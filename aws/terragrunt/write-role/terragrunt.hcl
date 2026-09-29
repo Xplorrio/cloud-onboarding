@@ -7,7 +7,8 @@
 # that user assume this role (user_assumable_role_arns where it is created, or
 # enable_write_role in single-account instead of this folder).
 # xplorr_principal: set trust_mode, clear trusted_principal_arns, and paste the
-# write access external ID Xplorr shows you.
+# write access external ID Xplorr shows you. The role then trusts only
+# Xplorr's actions role (xplorr_principal_arn), not its sync role.
 
 include "root" {
   path   = find_in_parent_folders("root.hcl")
@@ -27,6 +28,8 @@ inputs = {
   trusted_principal_arns = ["arn:aws:iam::111111111111:user/xplorr-assumer"]
   # Its own external ID, never the read-only role's: openssl rand -hex 16
   iam_external_id = ""
+  # xplorr_principal only: the one Xplorr role that may assume this role.
+  xplorr_principal_arn = "arn:aws:iam::732121667940:role/xplorr-actions"
   # Resources tagged xplorr:protect = true are refused. "" turns this off.
   protect_tag_key = "xplorr:protect"
   allowed_regions = []

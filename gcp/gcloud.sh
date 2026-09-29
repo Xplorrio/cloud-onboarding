@@ -37,10 +37,19 @@
 #   --output-dir DIR          Where xplorr-connect-form.json and
 #                             xplorr-credentials.json are written (default .)
 #   --skip-apis               Do not enable APIs
-#   --enable-write-action A   Opt-in write access: create a separate custom role
-#                             for approved action type A and grant it to the
-#                             service account (repeatable). Off unless given.
+#   --enable-write-action A   Opt-in write access: create a separate service
+#                             account and a custom role for approved action
+#                             type A, granted to that service account only
+#                             (repeatable). Off unless given.
 #                             Action types: stop_idle_instance
+#   --write-service-account NAME
+#                             Write service account id (default xplorr-write)
+#   --xplorr-write-principal EMAIL
+#                             Xplorr's actions service account, which may
+#                             impersonate the write service account
+#                             (xplorr_principal only, required there)
+#   --write-key-file PATH     Where --create-key writes the write service
+#                             account's key (default ./xplorr-write-key.json)
 #   --write-role-id ID        Custom role id for write access (default xplorrWrite)
 #   --write-protect-tag KEY   Refuse instances tagged KEY=true, for example
 #                             my-project-id/xplorr-protect (a Resource Manager
@@ -71,6 +80,9 @@ KEY_FILE="./xplorr-key.json"
 ENABLE_APIS="true"
 WRITE_ACTIONS=()
 WRITE_ROLE_ID="xplorrWrite"
+WRITE_SA_ID="xplorr-write"
+XPLORR_WRITE_PRINCIPAL=""
+WRITE_KEY_FILE="./xplorr-write-key.json"
 WRITE_PROTECT_TAG=""
 
 usage() {
@@ -108,6 +120,9 @@ while [[ $# -gt 0 ]]; do
     --skip-apis) ENABLE_APIS="false"; shift ;;
     --enable-write-action) need_value "$@"; WRITE_ACTIONS+=("$2"); shift 2 ;;
     --write-role-id) need_value "$@"; WRITE_ROLE_ID="$2"; shift 2 ;;
+    --write-service-account) need_value "$@"; WRITE_SA_ID="$2"; shift 2 ;;
+    --xplorr-write-principal) need_value "$@"; XPLORR_WRITE_PRINCIPAL="$2"; shift 2 ;;
+    --write-key-file) need_value "$@"; WRITE_KEY_FILE="$2"; shift 2 ;;
     --write-protect-tag) need_value "$@"; WRITE_PROTECT_TAG="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
@@ -155,6 +170,14 @@ for a in "${WRITE_ACTIONS[@]+"${WRITE_ACTIONS[@]}"}"; do
   esac
 done
 [[ "$WRITE_ROLE_ID" =~ ^[a-zA-Z0-9_.]{3,64}$ ]] || die "--write-role-id must be 3 to 64 letters, digits, underscores or periods"
+[[ "$WRITE_SA_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || die "--write-service-account must be 6 to 30 lowercase letters, digits or hyphens"
+[[ "$WRITE_SA_ID" != "$SA_ID" ]] || die "--write-service-account must differ from --service-account: write access uses a separate identity"
+if [[ ${#WRITE_ACTIONS[@]} -gt 0 && "$TRUST_MODE" == "xplorr_principal" ]]; then
+  [[ "$XPLORR_WRITE_PRINCIPAL" =~ ^[a-z][a-z0-9-]{4,29}@[a-z0-9-]+\.iam\.gserviceaccount\.com$ ]] ||
+    die "write access with --trust-mode xplorr_principal needs --xplorr-write-principal, Xplorr's actions service account"
+  [[ "$XPLORR_WRITE_PRINCIPAL" != "$XPLORR_PRINCIPAL" ]] ||
+    die "--xplorr-write-principal must differ from --xplorr-principal: write access uses a separate identity"
+fi
 if [[ -n "$WRITE_PROTECT_TAG" ]]; then
   [[ ${#WRITE_ACTIONS[@]} -gt 0 ]] || die "--write-protect-tag needs --enable-write-action"
   [[ "$WRITE_PROTECT_TAG" =~ ^[a-z0-9][a-z0-9-]{0,62}/[A-Za-z0-9][A-Za-z0-9._-]{0,62}$ ]] ||
@@ -361,12 +384,26 @@ elif [[ "$CREATE_KEY" == "true" ]]; then
   fi
 fi
 
-# 8. Opt-in write access, only with --enable-write-action. A separate custom
-# role holding only the permissions of the listed action types, granted to
-# the same service account. The viewer roles above are not changed. Xplorr
-# uses it only after a person in your Xplorr organization approves an action.
+# 8. Opt-in write access, only with --enable-write-action. A separate service
+# account, and a custom role holding only the permissions of the listed action
+# types, granted to that service account only. The read service account and
+# its viewer roles are not changed. Xplorr uses it only after a person in
+# your Xplorr organization approves an action.
 
 if [[ ${#WRITE_ACTIONS[@]} -gt 0 ]]; then
+  WRITE_SA_EMAIL="${WRITE_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+  WRITE_MEMBER="serviceAccount:${WRITE_SA_EMAIL}"
+
+  step "Write service account $WRITE_SA_EMAIL"
+  if gcloud iam service-accounts describe "$WRITE_SA_EMAIL" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    echo "    exists"
+  else
+    gcloud iam service-accounts create "$WRITE_SA_ID" \
+      --project="$PROJECT_ID" \
+      --display-name="Xplorr write" \
+      --description="Opt-in write access for Xplorr approved actions (${TRUST_MODE}). Separate from the read service account."
+  fi
+
   WRITE_ROLE="projects/${PROJECT_ID}/roles/${WRITE_ROLE_ID}"
   PERMS=$(printf '%s\n' "${WRITE_PERMISSIONS[@]}" | sort -u | paste -sd, -)
   step "Write access: custom role $WRITE_ROLE ($PERMS)"
@@ -387,7 +424,7 @@ if [[ ${#WRITE_ACTIONS[@]} -gt 0 ]]; then
     echo "    permissions set"
   fi
 
-  step "Granting $WRITE_ROLE to $SA_EMAIL on $PROJECT_ID"
+  step "Granting $WRITE_ROLE to $WRITE_SA_EMAIL on $PROJECT_ID"
   if [[ -n "$WRITE_PROTECT_TAG" ]]; then
     # The expression holds a comma, which --condition cannot take, so the
     # condition goes through a file.
@@ -403,12 +440,30 @@ with open(sys.argv[1], "w") as fh:
     }, fh)
 PY
     retry gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-      --member="$MEMBER" --role="$WRITE_ROLE" --condition-from-file="$CONDITION_FILE" --quiet >/dev/null
+      --member="$WRITE_MEMBER" --role="$WRITE_ROLE" --condition-from-file="$CONDITION_FILE" --quiet >/dev/null
     rm -f "$CONDITION_FILE"
     echo "    with a condition refusing instances tagged ${WRITE_PROTECT_TAG}=true"
   else
     retry gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-      --member="$MEMBER" --role="$WRITE_ROLE" --condition=None --quiet >/dev/null
+      --member="$WRITE_MEMBER" --role="$WRITE_ROLE" --condition=None --quiet >/dev/null
+  fi
+
+  # How Xplorr signs in as the write service account: the same pattern as the
+  # read one, with Xplorr's separate actions identity or a key of its own.
+  if [[ "$TRUST_MODE" == "xplorr_principal" ]]; then
+    step "Allowing $XPLORR_WRITE_PRINCIPAL to impersonate $WRITE_SA_EMAIL"
+    retry gcloud iam service-accounts add-iam-policy-binding "$WRITE_SA_EMAIL" \
+      --project="$PROJECT_ID" \
+      --member="serviceAccount:${XPLORR_WRITE_PRINCIPAL}" \
+      --role=roles/iam.serviceAccountTokenCreator --condition=None --quiet >/dev/null
+  elif [[ "$CREATE_KEY" == "true" ]]; then
+    step "Write key file $WRITE_KEY_FILE"
+    if [[ -e "$WRITE_KEY_FILE" ]]; then
+      echo "    $WRITE_KEY_FILE exists, so no new key was created."
+    else
+      (umask 077 && gcloud iam service-accounts keys create "$WRITE_KEY_FILE" \
+        --iam-account="$WRITE_SA_EMAIL" --project="$PROJECT_ID")
+    fi
   fi
 fi
 
@@ -458,8 +513,16 @@ echo "================================================================"
 if [[ ${#WRITE_ACTIONS[@]} -gt 0 ]]; then
   echo
   echo "Write access (opt in): custom role projects/${PROJECT_ID}/roles/${WRITE_ROLE_ID}"
-  echo "  action types: ${WRITE_ACTIONS[*]}"
-  echo "  granted to:   $SA_EMAIL${WRITE_PROTECT_TAG:+, except instances tagged ${WRITE_PROTECT_TAG}=true}"
+  echo "  action types:            ${WRITE_ACTIONS[*]}"
+  echo "  write service account:   ${WRITE_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com${WRITE_PROTECT_TAG:+, except instances tagged ${WRITE_PROTECT_TAG}=true}"
+  if [[ "$TRUST_MODE" == "xplorr_principal" ]]; then
+    echo "  impersonated by:         $XPLORR_WRITE_PRINCIPAL"
+  elif [[ ! -e "$WRITE_KEY_FILE" ]]; then
+    echo "  its own key (not the read key):"
+    echo "    gcloud iam service-accounts keys create ${WRITE_KEY_FILE} --iam-account=${WRITE_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com --project=${PROJECT_ID}"
+  else
+    echo "  its own key file:        $WRITE_KEY_FILE (mode 600; delete it once saved in Xplorr)"
+  fi
   echo "  Xplorr uses it only after a person in your Xplorr organization approves an action."
 fi
 if [[ -z "$TABLE" ]]; then

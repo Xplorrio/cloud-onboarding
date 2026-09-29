@@ -40,6 +40,12 @@ In CI it is the repository secret of the same name. To add a name to the list,
 run `python3 scripts/check-client-data.py --hash "Some Name"` with the key
 exported and paste the printed line into the script.
 
+History is never rewritten. A commit whose message was reviewed and found to
+hold no client data can be listed, by full sha and with a one line reason, in
+`ALLOWED_COMMIT_MESSAGES` in that script; only its message is skipped, never
+its files. `scripts/test-check-client-data.py` proves the allowlisted commit
+is skipped and any other match still fails.
+
 ## Rules for changes
 
 - **Permissions.** Every permission of a read-only role must be a read that

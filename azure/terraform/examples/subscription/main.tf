@@ -48,4 +48,6 @@ module "xplorr" {
   enable_write_role = var.enable_write_role
   write_actions     = var.write_actions
   write_scopes      = var.write_scopes
+  # xplorr_principal only: Xplorr's separate write app, shown by Xplorr.
+  xplorr_write_application_id = var.xplorr_write_application_id
 }

@@ -35,6 +35,25 @@ override_resource {
   }
 }
 
+override_resource {
+  target          = module.write_service_principal[0].azuread_service_principal.sp
+  override_during = plan
+  values = {
+    id        = "/servicePrincipals/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    object_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    client_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  }
+}
+
+override_resource {
+  target          = module.write_service_principal[0].azuread_application.sp
+  override_during = plan
+  values = {
+    id        = "/applications/cccccccc-cccc-cccc-cccc-cccccccccccc"
+    client_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  }
+}
+
 mock_provider "azurerm" {
   mock_data "azurerm_role_definition" {
     defaults = {
@@ -281,6 +300,72 @@ run "write_role_deallocate_on_each_subscription" {
     condition     = alltrue([for k, v in azurerm_role_assignment.scope : v.role_definition_name != "xplorr-write"])
     error_message = "The read-only assignments must not change."
   }
+
+  assert {
+    condition     = length(module.write_service_principal) == 1 && output.xplorr_write_access.client_id == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" && output.client_id == "88888888-8888-8888-8888-888888888888"
+    error_message = "Write access must use its own app registration, not the read-only one."
+  }
+
+  assert {
+    condition     = alltrue([for k, v in azurerm_role_assignment.write : v.principal_id == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"])
+    error_message = "The write role must be assigned to the write service principal only."
+  }
+
+  assert {
+    condition     = alltrue([for k, v in azurerm_role_assignment.scope : v.principal_id == "77777777-7777-7777-7777-777777777777"])
+    error_message = "The read-only roles must stay on the read-only service principal."
+  }
+
+  assert {
+    condition     = length(nonsensitive(module.write_service_principal[0].service_principal_secrets)) == 0 && output.xplorr_write_access.tenant_id == "33333333-3333-3333-3333-333333333333"
+    error_message = "No write secret by default, and the tenant ID must be output."
+  }
+}
+
+run "write_role_keyless_uses_xplorr_write_app" {
+  command = plan
+
+  variables {
+    trust_mode                  = "xplorr_principal"
+    xplorr_application_id       = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    enable_write_role           = true
+    write_actions               = ["deallocate_idle_vm"]
+    xplorr_write_application_id = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+  }
+
+  expect_failures = [check.xplorr_principal_coming_soon]
+
+  assert {
+    condition     = length(module.write_service_principal) == 0 && length(azuread_service_principal.xplorr_write) == 1 && azuread_service_principal.xplorr_write[0].client_id == "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+    error_message = "Keyless write access must use Xplorr's separate write app."
+  }
+}
+
+run "write_role_keyless_needs_write_app_id" {
+  command = plan
+
+  variables {
+    trust_mode            = "xplorr_principal"
+    xplorr_application_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    enable_write_role     = true
+    write_actions         = ["deallocate_idle_vm"]
+  }
+
+  expect_failures = [var.xplorr_write_application_id, check.xplorr_principal_coming_soon]
+}
+
+run "write_app_id_must_differ" {
+  command = plan
+
+  variables {
+    trust_mode                  = "xplorr_principal"
+    xplorr_application_id       = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    enable_write_role           = true
+    write_actions               = ["deallocate_idle_vm"]
+    xplorr_write_application_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+  }
+
+  expect_failures = [var.xplorr_write_application_id, check.xplorr_principal_coming_soon]
 }
 
 run "write_role_on_resource_groups_only" {

@@ -23,7 +23,7 @@ variable "trust_mode" {
   description = <<-EOT
     Who assumes the role. Use the same mode as your read-only role.
     customer_principal: the IAM user you already use for the read-only role (xplorr-assumer), listed in trusted_principal_arns.
-    xplorr_principal: Xplorr's AWS account, limited to its roles named xplorr-*, with an external ID of its own.
+    xplorr_principal: only Xplorr's dedicated actions role (xplorr_principal_arn), with an external ID of its own. Xplorr's sync role cannot assume it.
   EOT
   type        = string
   default     = "customer_principal"
@@ -56,21 +56,15 @@ variable "trusted_principal_arns" {
   }
 }
 
-variable "xplorr_account_id" {
-  description = "xplorr_principal only. The Xplorr AWS account the role trusts."
+variable "xplorr_principal_arn" {
+  description = "xplorr_principal only. The one Xplorr role allowed to assume the write role: Xplorr's dedicated actions role, matched exactly (aws:PrincipalArn StringEquals). Xplorr's sync role, which assumes your read-only role, cannot assume this one."
   type        = string
-  default     = "732121667940"
+  default     = "arn:aws:iam::732121667940:role/xplorr-actions"
 
   validation {
-    condition     = can(regex("^[0-9]{12}$", var.xplorr_account_id))
-    error_message = "xplorr_account_id must be a 12 digit AWS account id."
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.xplorr_principal_arn)) && !strcontains(var.xplorr_principal_arn, "*")
+    error_message = "xplorr_principal_arn must be one exact IAM role ARN such as arn:aws:iam::732121667940:role/xplorr-actions, without wildcards."
   }
-}
-
-variable "xplorr_principal_role_pattern" {
-  description = "xplorr_principal only. Only roles in the Xplorr account whose name matches this pattern may assume the role (aws:PrincipalArn condition)."
-  type        = string
-  default     = "xplorr-*"
 }
 
 variable "iam_external_id" {

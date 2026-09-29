@@ -109,11 +109,13 @@ variable "xplorr_application_id" {
   }
 }
 
-# Opt-in write access. Off by default. A separate custom role assigned
-# alongside the read-only roles; those are never changed.
+# Opt-in write access. Off by default. A separate custom role assigned to a
+# separate identity: its own app registration and service principal
+# (customer_principal) or Xplorr's separate write app (xplorr_principal). The
+# read-only identity and its roles are never changed.
 
 variable "enable_write_role" {
-  description = "Create the xplorr-write custom role and assign it to the same principal, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The read-only roles are not changed."
+  description = "Create the xplorr-write custom role and a separate identity that holds it (its own app registration and service principal, or Xplorr's write app in xplorr_principal mode), so Xplorr can carry out the approved actions listed in write_actions. Off by default. The read-only identity and roles are not changed."
   type        = bool
   default     = false
 }
@@ -138,6 +140,39 @@ variable "write_role_name" {
   description = "With enable_write_role. Name of the custom role definition. It must be unique in the tenant."
   type        = string
   default     = "xplorr-write"
+}
+
+variable "write_display_name" {
+  description = "With enable_write_role, customer_principal only. Display name of the separate app registration that holds the write role."
+  type        = string
+  default     = "xplorr-write"
+
+  validation {
+    condition     = var.write_display_name != var.display_name
+    error_message = "write_display_name must differ from display_name: write access uses its own app registration."
+  }
+}
+
+variable "write_create_client_secret" {
+  description = "With enable_write_role, customer_principal only. Create the write app's client secret with Terraform. WARNING: the value is then stored in plain text in the Terraform state. Leave this false and create the secret in the portal, as for the read-only app."
+  type        = bool
+  default     = false
+}
+
+variable "xplorr_write_application_id" {
+  description = "With enable_write_role, xplorr_principal only, and required there. The application (client) ID of Xplorr's separate multi-tenant write app, which Xplorr shows you when you turn on write access. It is not xplorr_application_id. There is no default on purpose."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = !var.enable_write_role || var.trust_mode != "xplorr_principal" || can(regex("^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$", var.xplorr_write_application_id))
+    error_message = "xplorr_write_application_id (a GUID) is required for write access when trust_mode is xplorr_principal."
+  }
+
+  validation {
+    condition     = var.xplorr_write_application_id == "" || lower(var.xplorr_write_application_id) != lower(var.xplorr_application_id)
+    error_message = "xplorr_write_application_id must differ from xplorr_application_id: write access uses a separate identity."
+  }
 }
 
 variable "write_scopes" {
