@@ -2,8 +2,13 @@
 
 Ready-to-use infrastructure code that creates the read-only roles and
 permissions [Xplorr](https://xplorr.io) needs to read your cloud costs,
-commitments, credits and resource inventory. Every permission is a read:
-Xplorr never creates, changes or deletes anything in your cloud.
+commitments, credits and resource inventory. Every permission of those roles
+is a read.
+
+Separately, and only if you opt in, each template can also create a write
+role so Xplorr can carry out changes a person in your organization has
+approved, limited to the action types you choose. See
+[Write access (opt in)](#write-access-opt-in).
 
 The permissions match exactly what Xplorr calls, and each template ends by
 printing the values the Xplorr **Connect account** form asks for
@@ -38,6 +43,37 @@ required inputs with no default; Xplorr will show them on the form.
 
 Use `customer_principal` until Xplorr announces keyless onboarding.
 
+## Write access (opt in)
+
+Off by default everywhere. When you turn it on:
+
+- It is a **separate role for a separate identity**, never merged into the
+  read-only one: an IAM role `xplorr-write` with its own external ID that
+  only Xplorr's dedicated actions role may assume (AWS); a custom role
+  `xplorr-write` held by its own app registration and service principal
+  (Azure); a custom role `xplorrWrite` held by its own service account,
+  `xplorr-write@<project>` (Google Cloud). The identities Xplorr syncs with
+  can never make a change.
+- It grants **only the action types you list**, one permission set per type.
+- Xplorr uses it **only to carry out an action someone approved** in your
+  Xplorr organization. Syncing never uses it.
+- Where the cloud supports it, resources you mark as protected are refused by
+  the cloud itself.
+
+| Cloud | Action type | Permissions | Protected resources |
+|---|---|---|---|
+| AWS | `stop_idle_instance` | `ec2:StopInstances`, `ec2:StartInstances` (undo), `ec2:DescribeInstances` | Explicit Deny on tag `xplorr:protect` = `true` |
+| AWS | `delete_unattached_ebs_volume` | `ec2:CreateSnapshot`, `ec2:DeleteVolume`, `ec2:CreateTags` (new snapshot only), `ec2:DescribeVolumes`, `ec2:DescribeSnapshots` | The same Deny; EC2 refuses to delete an attached volume |
+| AWS | `release_unassociated_eip` | `ec2:ReleaseAddress`, `ec2:DescribeAddresses` | The same Deny; no `ec2:DisassociateAddress` |
+| AWS | `rightsize_instance` | None: a Terraform pull request | |
+| Azure | `deallocate_idle_vm` | `Microsoft.Compute/virtualMachines/deallocate/action`, `.../start/action` (undo) | No RBAC condition exists for VM actions; narrow the scope to resource groups, or use a `ReadOnly` lock |
+| Google Cloud | `stop_idle_instance` | `compute.instances.stop`, `compute.instances.start` (undo) | Optional IAM condition on a Resource Manager tag |
+
+Each cloud's README has the details, the limits and how to remove it:
+[AWS](aws/terraform/README.md#write-access-opt-in),
+[Azure](azure/README.md#write-access-opt-in),
+[Google Cloud](gcp/README.md#write-access-opt-in).
+
 ## Getting started
 
 ```bash
@@ -63,7 +99,7 @@ or by a git source pinned to a release tag:
 
 ```hcl
 module "xplorr" {
-  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.1.1"
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.2.0"
 }
 ```
 
@@ -72,7 +108,7 @@ Always pin `ref` to a tag
 
 ## Releases
 
-Releases are annotated tags (`v0.1.1`, ...), listed in
+Releases are annotated tags (`v0.2.0`, ...), listed in
 [CHANGELOG.md](CHANGELOG.md). A tag is never moved or deleted once pushed, so a
 module source pinned to a tag always gets the same code. Fixes ship as a new
 tag. See [CONTRIBUTING.md](CONTRIBUTING.md#releases).
@@ -93,10 +129,10 @@ Every pull request runs:
   against fake credentials) and `tflint` for every module and example
 - `terragrunt hcl fmt --check`, `terragrunt hcl validate` and a Terragrunt
   `validate` of each example
-- `cfn-lint` on both CloudFormation templates, and a check that
+- `cfn-lint` on every CloudFormation template, and a check that
   `stackset.yaml` embeds the current `role.yaml`
 - [`scripts/check-policy-drift.py`](scripts/check-policy-drift.py), which fails
-  if the AWS policy differs between Terraform and CloudFormation
+  if the AWS read or write policy differs between Terraform and CloudFormation
 - `bicep build`, `bicep build-params` and the Bicep linter on the Azure Bicep
   files, and `shellcheck` on the shell scripts
 - `gitleaks` over the whole git history

@@ -57,6 +57,13 @@ locals {
     local.keyless ? ["iamcredentials.googleapis.com"] : [],
   )) : toset([])
 
+  # The opt-in write role's permissions per action type. Reads of the
+  # instance's state come from roles/compute.viewer above.
+  write_permissions = {
+    stop_idle_instance = ["compute.instances.stop", "compute.instances.start"]
+  }
+  write_role_permissions = sort(distinct(flatten([for a in var.write_actions : local.write_permissions[a]])))
+
   scope_grants = !var.enable_org_level_grants ? {} : merge(
     var.organization_id == null ? {} : {
       for role in var.scope_roles : "organizations/${var.organization_id}|${role}" => {
@@ -171,3 +178,62 @@ resource "google_service_account_key" "xplorr" {
 
   service_account_id = google_service_account.xplorr.name
 }
+
+# Opt-in write access: a separate service account, and a custom role holding
+# only the permissions of the listed action types, granted to that service
+# account only on project_id. The optional condition refuses instances tagged
+# write_protect_tag = true. The read service account never gets the role.
+resource "google_service_account" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  project      = var.project_id
+  account_id   = var.write_service_account_id
+  display_name = "Xplorr write"
+  description  = "Opt-in write access for Xplorr approved actions (${var.trust_mode}). Separate from the read service account."
+}
+resource "google_project_iam_custom_role" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  project     = var.project_id
+  role_id     = var.write_role_id
+  title       = "Xplorr write"
+  description = "Opt-in write access for Xplorr approved actions: ${join(", ", var.write_actions)}. Created by https://github.com/Xplorrio/cloud-onboarding"
+  permissions = local.write_role_permissions
+}
+
+resource "google_project_iam_member" "write" {
+  count = var.enable_write_role ? 1 : 0
+
+  project = var.project_id
+  role    = google_project_iam_custom_role.write[0].name
+  member  = "serviceAccount:${google_service_account.write[0].email}"
+
+  dynamic "condition" {
+    for_each = var.write_protect_tag != null ? [1] : []
+    content {
+      title       = "not-protected"
+      description = "Refuse instances tagged ${var.write_protect_tag} = true"
+      expression  = "!resource.matchTag('${var.write_protect_tag}', 'true')"
+    }
+  }
+}
+
+# xplorr_principal: Xplorr's separate actions service account may mint tokens
+# for the write service account only, just as the read service account is
+# impersonated by Xplorr's sync service account.
+resource "google_service_account_iam_member" "xplorr_write_impersonation" {
+  count = var.enable_write_role && local.keyless ? 1 : 0
+
+  service_account_id = google_service_account.write[0].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${var.xplorr_write_service_account_email}"
+}
+
+# Opt in only, with create_key, like the read key. The private key ends up in
+# plain text in the Terraform state.
+resource "google_service_account_key" "write" {
+  count = var.enable_write_role && local.create_key ? 1 : 0
+
+  service_account_id = google_service_account.write[0].name
+}
+

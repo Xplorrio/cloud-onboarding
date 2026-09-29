@@ -171,3 +171,79 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# Opt-in write access. Off by default. The write role is a separate role
+# (modules/write-role) with its own external ID; the read-only role above
+# never gains a write permission.
+
+variable "enable_write_role" {
+  description = "Create the separate xplorr-write role, so Xplorr can carry out the approved actions listed in write_actions. Off by default. The read-only role is not changed."
+  type        = bool
+  default     = false
+}
+
+variable "write_actions" {
+  description = "With enable_write_role. The action types the write role may carry out: stop_idle_instance, delete_unattached_ebs_volume, release_unassociated_eip. Only their permissions are granted. rightsize_instance needs no cloud permission (it is a Terraform pull request)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !var.enable_write_role || length(var.write_actions) > 0
+    error_message = "enable_write_role = true needs at least one action type in write_actions."
+  }
+
+  validation {
+    condition     = alltrue([for a in var.write_actions : contains(["stop_idle_instance", "delete_unattached_ebs_volume", "release_unassociated_eip"], a)])
+    error_message = "write_actions may hold only stop_idle_instance, delete_unattached_ebs_volume and release_unassociated_eip. rightsize_instance is a Terraform pull request and needs no cloud permission."
+  }
+}
+
+variable "write_role_name" {
+  description = "With enable_write_role. Name of the write role. Keep the xplorr- prefix: in xplorr_principal mode Xplorr only assumes roles whose name starts with xplorr-."
+  type        = string
+  default     = "xplorr-write"
+
+  validation {
+    condition     = can(regex("^xplorr-[a-z0-9+=,.@_-]{1,57}$", var.write_role_name))
+    error_message = "write_role_name must start with xplorr- and be at most 64 lowercase characters from a-z, 0-9 and +=,.@_-."
+  }
+
+  validation {
+    condition     = var.write_role_name != var.role_name
+    error_message = "write_role_name must differ from role_name: the write role is a separate role."
+  }
+}
+
+variable "write_iam_external_id" {
+  description = "With enable_write_role. The write role's external ID, which is not the read-only role's: Xplorr shows a separate one for write access. Required for xplorr_principal; optional for customer_principal (generate one with: openssl rand -hex 16)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = !var.enable_write_role || var.trust_mode != "xplorr_principal" || length(var.write_iam_external_id) >= 2
+    error_message = "write_iam_external_id is required for the write role when trust_mode is xplorr_principal. Use the write access external ID Xplorr shows you."
+  }
+
+  validation {
+    condition     = var.write_iam_external_id == "" || var.write_iam_external_id != var.iam_external_id
+    error_message = "write_iam_external_id must differ from iam_external_id, so the read-only role's external ID cannot assume the write role."
+  }
+}
+
+variable "write_xplorr_principal_arn" {
+  description = "With enable_write_role, xplorr_principal only. The one Xplorr role allowed to assume the write role, matched exactly: Xplorr's dedicated actions role. The read-only role keeps trusting Xplorr roles named xplorr-*."
+  type        = string
+  default     = "arn:aws:iam::732121667940:role/xplorr-actions"
+}
+
+variable "write_protect_tag_key" {
+  description = "With enable_write_role. Resources tagged with this key and the value true (any case) are refused by an explicit Deny. An empty string turns the guard off."
+  type        = string
+  default     = "xplorr:protect"
+}
+
+variable "write_allowed_regions" {
+  description = "With enable_write_role. Optional. Regions the write role may act in (aws:RequestedRegion). Empty means every region."
+  type        = list(string)
+  default     = []
+}

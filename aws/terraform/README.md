@@ -1,8 +1,12 @@
 # Xplorr on AWS: Terraform module
 
 Creates the read-only IAM role Xplorr assumes to read your AWS costs,
-commitments, credits, invoices and resource inventory. Every permission is a
-read. Xplorr never creates, changes or deletes anything in your account.
+commitments, credits, invoices and resource inventory. Every permission of
+that role is a read.
+
+Optionally, and only if you turn it on, it also creates a separate write role,
+`xplorr-write`, so Xplorr can carry out changes a person in your Xplorr
+organization has approved. See [Write access (opt in)](#write-access-opt-in).
 
 Built on the CloudDrove modules
 [`clouddrove/iam-role/aws`](https://registry.terraform.io/modules/clouddrove/iam-role/aws/1.4.0) 1.4.0 and
@@ -77,7 +81,7 @@ or by a git source pinned to a release tag:
 
 ```hcl
 module "xplorr" {
-  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.1.1"
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.2.0"
 
   iam_external_id = var.iam_external_id
 }
@@ -91,6 +95,9 @@ Examples:
 | [`examples/additional-account`](examples/additional-account) | Each further standalone account. Creates only the role, trusting the user from `basic` |
 | [`examples/organization`](examples/organization) | An AWS Organization managed from one Terraform configuration (management account plus members through provider aliases). For many accounts, or accounts added later, use [`../cloudformation/stackset.yaml`](../cloudformation/stackset.yaml) |
 | [`examples/keyless`](examples/keyless) | `xplorr_principal` (coming soon) |
+
+`basic`, `additional-account` and `keyless` also take `enable_write_role`,
+`write_actions` and `write_iam_external_id`, all off by default.
 
 The external ID is optional in `customer_principal` mode. If you set one,
 generate a random value rather than choosing a word:
@@ -165,6 +172,8 @@ organization from syncing until new keys are saved.
 | Costs empty after connecting | Cost Explorer was just enabled and has not populated yet (up to 24 hours) |
 | Per-resource costs empty | Resource-level data is off in Cost Management preferences |
 | FOCUS or carbon export reads fail with `AccessDenied` on `kms:Decrypt` | The bucket uses SSE-KMS; add its key to `export_kms_key_arns` (and allow the role in the key policy if the key does not delegate to IAM) |
+| An approved action fails with `not authorized to perform: sts:AssumeRole` on `xplorr-write` | The write external ID in Xplorr differs from `write_iam_external_id`, or (`customer_principal`) the user may not assume the write role: add its ARN to `user_assumable_role_arns` where the user is created |
+| An approved action fails with `UnauthorizedOperation` and an explicit deny | The resource is tagged `xplorr:protect` = `true`, or the region is outside `write_allowed_regions`. Nothing was changed |
 | Credits or invoices missing for a member account | They belong to the payer. Connect the management account for organization-wide costs, credits and invoices |
 
 ## Permissions
@@ -195,6 +204,108 @@ messages.
 Connect the management (payer) account for organization-wide costs and
 credits. A member account only sees its own costs.
 
+## Write access (opt in)
+
+Off by default. With `enable_write_role = true` the module creates a second
+role, `xplorr-write`, next to the read-only one:
+
+- **A separate role.** The read-only role never gains a write permission.
+  The write role has its own external ID (`write_iam_external_id`), which must
+  differ from the read-only role's, so the credentials Xplorr uses for syncing
+  cannot make changes.
+- **Only the action types you list.** Each entry in `write_actions` adds the
+  permissions of one action type and nothing else.
+- **Approval first.** Xplorr assumes the write role only to carry out an
+  action a person in your Xplorr organization has approved, in the console or
+  in Slack. Syncing never uses it.
+- **Protected resources are refused.** An explicit Deny refuses every change
+  to a resource tagged `xplorr:protect` = `true` (any case), whatever Xplorr
+  asks for. Change the key with `write_protect_tag_key`, or set it to `""` to
+  turn the guard off.
+
+Approved actions are rolling out in Xplorr. Until the console offers write
+access for your account, the role exists but is never assumed.
+
+```hcl
+module "xplorr" {
+  source = "git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.2.0"
+
+  iam_external_id = var.iam_external_id
+
+  enable_write_role     = true
+  write_actions         = ["stop_idle_instance", "release_unassociated_eip"]
+  write_iam_external_id = var.write_iam_external_id # not the same as iam_external_id
+}
+```
+
+`terraform output -json xplorr_write_access_form` prints what Xplorr asks for:
+the account ID, `write_role_name`, `write_role_arn`, `write_iam_external_id`
+and the action types.
+
+### What each action type allows
+
+| Action type | Allows | On | Guards and limits |
+|---|---|---|---|
+| `stop_idle_instance` | `ec2:StopInstances`, and `ec2:StartInstances` to undo it; `ec2:DescribeInstances` to check the state first | Instances in this account | Protect tag Deny; `write_allowed_regions`. No terminate |
+| `delete_unattached_ebs_volume` | `ec2:CreateSnapshot`, then `ec2:DeleteVolume`; `ec2:CreateTags` only on the new snapshot while it is created (`ec2:CreateAction` = `CreateSnapshot`); `ec2:DescribeVolumes`, `ec2:DescribeSnapshots` | Volumes in this account, and new snapshots | Protect tag Deny; `write_allowed_regions`. EC2 refuses to delete an attached volume (`VolumeInUse`) |
+| `release_unassociated_eip` | `ec2:ReleaseAddress`; `ec2:DescribeAddresses` | Elastic IPs in this account | Protect tag Deny; `write_allowed_regions`. No `ec2:DisassociateAddress`, so an address in use cannot be detached |
+| `rightsize_instance` | Nothing | | Xplorr proposes it as a Terraform pull request in your repository, so no cloud permission is needed |
+
+The describe calls take no resource ARN, so they are granted on `*`; they
+only read. Everything else is limited to resources in the account the role
+lives in.
+
+### Limits
+
+- **No condition for "unattached" or "unassociated".** IAM has no condition
+  key for a volume's attachment state or an Elastic IP's association. EC2
+  itself refuses to delete an attached volume, and without
+  `ec2:DisassociateAddress` the role cannot free an address that is in use.
+  Xplorr also checks the state with the describe calls right before acting.
+- **Deleting a volume and releasing an address cannot be undone by Xplorr.**
+  A volume is snapshotted first; restoring it is up to you (the role has no
+  `ec2:CreateVolume`). The snapshot is kept, and billed, until you delete it.
+  A released Elastic IP may not be recoverable.
+- **Undoing a stop can fail for encrypted instances.** Starting an instance
+  whose volumes use a customer managed KMS key also needs permissions on that
+  key, which the write role does not have. Start it yourself, or allow the
+  role in the key policy.
+- **Instances IAM cannot tell apart.** A stopped instance in an Auto Scaling
+  group may be replaced, and instance store data is lost on stop. Tag
+  instances that must never be stopped with `xplorr:protect` = `true`.
+- **Service control policies and permission boundaries** still apply;
+  `permissions_boundary_arn` is set on the write role too.
+
+### Trust
+
+The write role's trust policy has the same shape as the read-only role's, in
+the same `trust_mode`:
+
+- `customer_principal`: it trusts the same principals as the read-only role
+  (the user created here, or `trusted_principal_arns`), and the user's policy
+  here gains `sts:AssumeRole` on the write role. For a write role in another
+  account, add its `write_role_arn` to `user_assumable_role_arns` where the
+  user is created; with `user_assumable_org_id`, the user may assume
+  `write_role_name` in any account of the organization.
+- `xplorr_principal`: it trusts **only Xplorr's dedicated actions role**,
+  `arn:aws:iam::732121667940:role/xplorr-actions`, matched exactly
+  (`aws:PrincipalArn` with `StringEquals`, set by
+  `write_xplorr_principal_arn`), with `write_iam_external_id` required. The
+  read-only role keeps trusting Xplorr roles named `xplorr-*`, so Xplorr's
+  sync role can read but can never assume the write role. Keep the `xplorr-`
+  prefix in `write_role_name`.
+
+To create only the write role in an account whose read-only role is managed
+elsewhere, use the [`modules/write-role`](modules/write-role) module on its
+own, or [`../cloudformation/write-role.yaml`](../cloudformation/write-role.yaml).
+
+### Removing write access
+
+Set `enable_write_role = false` and apply. That deletes the write role and its
+policy, and removes it from the user's assume policy; the read-only role and
+the connection keep working. Also turn write access off for the account in
+Xplorr, so it stops offering actions there.
+
 ## Inputs
 
 | Name | Default | Description |
@@ -217,6 +328,13 @@ credits. A member account only sees its own costs.
 | `max_session_duration` | `3600` | At least 3600: Xplorr requests one hour sessions |
 | `permissions_boundary_arn` | `""` | Optional permissions boundary for the role and user |
 | `tags` | `{}` | Tags for the role (the CloudDrove user module does not apply custom tags to the user) |
+| `enable_write_role` | `false` | Create the separate write role (see [Write access](#write-access-opt-in)) |
+| `write_actions` | `[]` | With `enable_write_role`: `stop_idle_instance`, `delete_unattached_ebs_volume`, `release_unassociated_eip` |
+| `write_role_name` | `xplorr-write` | Name of the write role; must start with `xplorr-` |
+| `write_iam_external_id` | `""` | The write role's own external ID. Required for `xplorr_principal`; must differ from `iam_external_id` |
+| `write_xplorr_principal_arn` | `arn:aws:iam::732121667940:role/xplorr-actions` | `xplorr_principal`: the one Xplorr role the write role trusts, matched exactly |
+| `write_protect_tag_key` | `xplorr:protect` | Resources tagged with it and the value `true` are refused. `""` turns the guard off |
+| `write_allowed_regions` | `[]` | Regions the write role may act in. Empty means every region |
 
 ## Outputs
 
@@ -228,6 +346,10 @@ credits. A member account only sees its own costs.
 | `user_name`, `user_arn` | `customer_principal`: the user whose key you save in Xplorr, and the ARN other accounts must trust |
 | `trust_mode` | The trust mode used |
 | `next_steps` | What to do after apply (`terraform output -raw next_steps`) |
+| `xplorr_write_access_form` | With `enable_write_role`: `aws_account_id`, `write_role_name`, `write_role_arn`, `write_iam_external_id`, `actions` |
+| `write_role_arn`, `write_role_name`, `write_iam_external_id` | The same values one by one |
+| `write_trusted_principal` | Who may assume the write role: the read-only role's principals, or the Xplorr actions role ARN |
+| `write_granted_permissions` | Every IAM action the write role allows |
 
 ## Tests
 

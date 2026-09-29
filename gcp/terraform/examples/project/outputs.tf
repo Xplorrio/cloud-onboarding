@@ -22,3 +22,13 @@ output "next_steps" {
   description = "What is left to do by hand."
   value       = module.xplorr.next_steps
 }
+
+output "xplorr_write_access" {
+  description = "Values Xplorr asks for when you turn on write access. Null unless enable_write_role is true."
+  value       = module.xplorr.xplorr_write_access
+}
+
+output "write_key_create_command" {
+  description = "With enable_write_role: create the write service account's own key outside Terraform."
+  value       = module.xplorr.write_key_create_command
+}

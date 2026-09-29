@@ -1,0 +1,373 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Opt-in write role for Xplorr approved actions. A separate role from the
+  read-only one (role.yaml), with its own external ID, granting only the action
+  types you turn on. Xplorr uses it only after a person in your Xplorr
+  organization approves an action. Source: https://github.com/Xplorrio/cloud-onboarding
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Action types (each off by default)
+        Parameters:
+          - EnableStopIdleInstance
+          - EnableDeleteUnattachedEbsVolume
+          - EnableReleaseUnassociatedEip
+      - Label:
+          default: Trust
+        Parameters:
+          - TrustMode
+          - WriteExternalId
+          - TrustedPrincipalArn
+          - AssumingUserName
+          - XplorrPrincipalArn
+      - Label:
+          default: Role
+        Parameters:
+          - RoleName
+          - ProtectTag
+          - AllowedRegions
+    ParameterLabels:
+      EnableStopIdleInstance:
+        default: Stop idle EC2 instances (and start them again to undo)
+      EnableDeleteUnattachedEbsVolume:
+        default: Snapshot and delete unattached EBS volumes
+      EnableReleaseUnassociatedEip:
+        default: Release unassociated Elastic IPs
+      TrustMode:
+        default: Trust mode (the same as your read-only role)
+      WriteExternalId:
+        default: Write access external ID
+      TrustedPrincipalArn:
+        default: IAM user that assumes your read-only role
+      AssumingUserName:
+        default: Let that user (in this account) assume the write role
+      XplorrPrincipalArn:
+        default: Xplorr actions role (xplorr_principal only)
+      RoleName:
+        default: Write role name
+      ProtectTag:
+        default: Refuse resources tagged xplorr:protect=true
+      AllowedRegions:
+        default: Regions the role may act in
+
+Parameters:
+  EnableStopIdleInstance:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      stop_idle_instance. Grants ec2:StopInstances, and ec2:StartInstances to undo
+      it, on instances in this account, plus ec2:DescribeInstances.
+  EnableDeleteUnattachedEbsVolume:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      delete_unattached_ebs_volume. Grants ec2:CreateSnapshot (and tagging that
+      snapshot while creating it) and ec2:DeleteVolume, plus ec2:DescribeVolumes and
+      ec2:DescribeSnapshots. EC2 itself refuses to delete an attached volume.
+  EnableReleaseUnassociatedEip:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      release_unassociated_eip. Grants ec2:ReleaseAddress and ec2:DescribeAddresses.
+      No ec2:DisassociateAddress, so an address in use cannot be detached.
+  TrustMode:
+    Type: String
+    Default: customer_principal
+    AllowedValues:
+      - customer_principal
+      - xplorr_principal
+    Description: >-
+      Use the same mode as your read-only role. customer_principal trusts the IAM
+      user in TrustedPrincipalArn. xplorr_principal trusts only Xplorr's actions
+      role (XplorrPrincipalArn), matched exactly, and needs WriteExternalId.
+  WriteExternalId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[A-Za-z0-9+=,.@:/_-]{2,1224}$"
+    Description: >-
+      The write role's own external ID, not the read-only role's. Required for
+      xplorr_principal, where Xplorr shows it when you turn on write access.
+      Optional for customer_principal; generate one with openssl rand -hex 16.
+  TrustedPrincipalArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws[a-z-]*:iam::[0-9]{12}:(user|role)/.+$"
+    Description: >-
+      customer_principal only, and required there. The IAM user that assumes your
+      read-only role, for example arn:aws:iam::111111111111:user/xplorr-assumer.
+  AssumingUserName:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[a-z0-9+=,.@_-]{1,64}$"
+    Description: >-
+      customer_principal only. When that user lives in this account (for example
+      xplorr-assumer), name it here and this stack lets it assume the write role.
+      For a user in another account, add the RoleArn output to
+      AdditionalAssumableRoleArns of the role.yaml stack there instead.
+  XplorrPrincipalArn:
+    Type: String
+    Default: arn:aws:iam::732121667940:role/xplorr-actions
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$"
+    ConstraintDescription: one exact IAM role ARN, without wildcards
+    Description: >-
+      xplorr_principal only. The one Xplorr role allowed to assume the write role,
+      Xplorr's dedicated actions role, matched exactly with aws:PrincipalArn. Xplorr's
+      sync role, which assumes your read-only role, cannot assume this one.
+  RoleName:
+    Type: String
+    Default: xplorr-write
+    AllowedPattern: "^xplorr-[a-z0-9+=,.@_-]{1,57}$"
+    ConstraintDescription: starts with xplorr-, at most 64 lowercase characters from a-z, 0-9 and +=,.@_-
+    Description: >-
+      Name of the write role. Keep the xplorr- prefix: in xplorr_principal mode
+      Xplorr only assumes roles whose name starts with xplorr-.
+  ProtectTag:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Resources tagged xplorr:protect with the value true (any case) are refused by
+      an explicit Deny. The Terraform module lets you choose another tag key.
+  AllowedRegions:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      Optional. Regions the role may act in, for example us-east-1,eu-west-1. Empty
+      means every region.
+
+Rules:
+  AtLeastOneActionType:
+    Assertions:
+      - Assert: !Or
+          - !Equals [!Ref EnableStopIdleInstance, "true"]
+          - !Equals [!Ref EnableDeleteUnattachedEbsVolume, "true"]
+          - !Equals [!Ref EnableReleaseUnassociatedEip, "true"]
+        AssertDescription: Turn on at least one action type. Without one the role would grant nothing.
+  XplorrPrincipalNeedsWriteExternalId:
+    RuleCondition: !Equals [!Ref TrustMode, xplorr_principal]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref WriteExternalId, ""]]
+        AssertDescription: WriteExternalId is required when TrustMode is xplorr_principal.
+  CustomerPrincipalNeedsTrustedPrincipal:
+    RuleCondition: !Equals [!Ref TrustMode, customer_principal]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref TrustedPrincipalArn, ""]]
+        AssertDescription: TrustedPrincipalArn is required when TrustMode is customer_principal.
+
+Conditions:
+  IsCustomerPrincipal: !Equals [!Ref TrustMode, customer_principal]
+  HasWriteExternalId: !Not [!Equals [!Ref WriteExternalId, ""]]
+  GrantAssumingUser: !And
+    - !Condition IsCustomerPrincipal
+    - !Not [!Equals [!Ref AssumingUserName, ""]]
+  StopInstances: !Equals [!Ref EnableStopIdleInstance, "true"]
+  DeleteVolumes: !Equals [!Ref EnableDeleteUnattachedEbsVolume, "true"]
+  ReleaseAddresses: !Equals [!Ref EnableReleaseUnassociatedEip, "true"]
+  HasProtectTag: !Equals [!Ref ProtectTag, "true"]
+  HasAllowedRegions: !Not [!Equals [!Join ["", !Ref AllowedRegions], ""]]
+
+Resources:
+  XplorrWriteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Opt-in write access for Xplorr approved actions
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAssume
+            Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              AWS: !If
+                - IsCustomerPrincipal
+                - !Ref TrustedPrincipalArn
+                - !Sub
+                  - arn:${AWS::Partition}:iam::${XplorrAccount}:root
+                  - XplorrAccount: !Select [4, !Split [":", !Ref XplorrPrincipalArn]]
+            Condition: !If
+              - IsCustomerPrincipal
+              - !If
+                - HasWriteExternalId
+                - StringEquals:
+                    sts:ExternalId: !Ref WriteExternalId
+                - !Ref AWS::NoValue
+              # xplorr_principal: only Xplorr's actions role, matched exactly
+              # (never the xplorr-* pattern the read-only role trusts), and the
+              # write role's own external ID.
+              - StringEquals:
+                  sts:ExternalId: !Ref WriteExternalId
+                  aws:PrincipalArn: !Ref XplorrPrincipalArn
+      Policies:
+        - PolicyName: xplorr-write
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - !If
+                - StopInstances
+                - Sid: StopIdleInstance
+                  Effect: Allow
+                  Action:
+                    - ec2:StopInstances
+                    - ec2:StartInstances
+                  Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:instance/*
+                  Condition: !If
+                    - HasAllowedRegions
+                    - StringEquals:
+                        aws:RequestedRegion: !Ref AllowedRegions
+                    - !Ref AWS::NoValue
+                - !Ref AWS::NoValue
+              - !If
+                - StopInstances
+                - Sid: CheckInstanceState
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeInstances
+                  Resource: "*"
+                - !Ref AWS::NoValue
+              - !If
+                - DeleteVolumes
+                - Sid: SnapshotBeforeDelete
+                  Effect: Allow
+                  Action:
+                    - ec2:CreateSnapshot
+                  Resource:
+                    - !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:volume/*
+                    - !Sub arn:${AWS::Partition}:ec2:*::snapshot/*
+                  Condition: !If
+                    - HasAllowedRegions
+                    - StringEquals:
+                        aws:RequestedRegion: !Ref AllowedRegions
+                    - !Ref AWS::NoValue
+                - !Ref AWS::NoValue
+              - !If
+                - DeleteVolumes
+                - Sid: TagSnapshotOnCreate
+                  Effect: Allow
+                  Action:
+                    - ec2:CreateTags
+                  Resource: !Sub arn:${AWS::Partition}:ec2:*::snapshot/*
+                  Condition:
+                    StringEquals:
+                      ec2:CreateAction: CreateSnapshot
+                - !Ref AWS::NoValue
+              - !If
+                - DeleteVolumes
+                - Sid: DeleteUnattachedVolume
+                  Effect: Allow
+                  Action:
+                    - ec2:DeleteVolume
+                  Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:volume/*
+                  Condition: !If
+                    - HasAllowedRegions
+                    - StringEquals:
+                        aws:RequestedRegion: !Ref AllowedRegions
+                    - !Ref AWS::NoValue
+                - !Ref AWS::NoValue
+              - !If
+                - DeleteVolumes
+                - Sid: CheckVolumeState
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeVolumes
+                    - ec2:DescribeSnapshots
+                  Resource: "*"
+                - !Ref AWS::NoValue
+              - !If
+                - ReleaseAddresses
+                - Sid: ReleaseUnassociatedAddress
+                  Effect: Allow
+                  Action:
+                    - ec2:ReleaseAddress
+                  Resource: !Sub arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:elastic-ip/*
+                  Condition: !If
+                    - HasAllowedRegions
+                    - StringEquals:
+                        aws:RequestedRegion: !Ref AllowedRegions
+                    - !Ref AWS::NoValue
+                - !Ref AWS::NoValue
+              - !If
+                - ReleaseAddresses
+                - Sid: CheckAddressState
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeAddresses
+                  Resource: "*"
+                - !Ref AWS::NoValue
+              # Resources tagged xplorr:protect = true are never changed. An
+              # explicit Deny wins over every Allow. Listing an action whose
+              # type is off does no harm: a Deny grants nothing.
+              - !If
+                - HasProtectTag
+                - Sid: DenyProtectedResources
+                  Effect: Deny
+                  Action:
+                    - ec2:StopInstances
+                    - ec2:StartInstances
+                    - ec2:CreateSnapshot
+                    - ec2:DeleteVolume
+                    - ec2:ReleaseAddress
+                  Resource: "*"
+                  Condition:
+                    StringEqualsIgnoreCase:
+                      aws:ResourceTag/xplorr:protect: "true"
+                - !Ref AWS::NoValue
+      Tags:
+        - Key: managed-by
+          Value: xplorr-cloud-onboarding
+
+  # customer_principal, with the user in this account: let it assume the
+  # write role. The user's read-only permissions are not changed.
+  AssumingUserWritePolicy:
+    Type: AWS::IAM::UserPolicy
+    Condition: GrantAssumingUser
+    Properties:
+      UserName: !Ref AssumingUserName
+      PolicyName: xplorr-assume-write-role
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeXplorrWriteRole
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !GetAtt XplorrWriteRole.Arn
+
+Outputs:
+  AwsAccountId:
+    Description: AWS account ID Xplorr asks for when you turn on write access
+    Value: !Ref AWS::AccountId
+  WriteRoleName:
+    Description: Write role name
+    Value: !Ref XplorrWriteRole
+  WriteRoleArn:
+    Description: >-
+      ARN of the write role. For a user in another account, add it to
+      AdditionalAssumableRoleArns of the role.yaml stack there
+    Value: !GetAtt XplorrWriteRole.Arn
+  WriteExternalId:
+    Condition: HasWriteExternalId
+    Description: The write role's external ID (not shown when none is set)
+    Value: !Ref WriteExternalId
+  ActionTypes:
+    Description: The action types this role may carry out
+    Value: !Sub >-
+      stop_idle_instance=${EnableStopIdleInstance},
+      delete_unattached_ebs_volume=${EnableDeleteUnattachedEbsVolume},
+      release_unassociated_eip=${EnableReleaseUnassociatedEip}
+  TrustMode:
+    Description: The trust mode this role was created with
+    Value: !Ref TrustMode
