@@ -31,8 +31,7 @@ terragrunt output -json xplorr_connect_form | jq .
 terragrunt output -raw next_steps
 ```
 
-To use a pinned release instead of the local module (works once this
-repository is public):
+To use a pinned release instead of the local module:
 
 ```bash
 export XPLORR_MODULE_SOURCE="git::https://github.com/Xplorrio/cloud-onboarding.git//aws/terraform?ref=v0.1.1"

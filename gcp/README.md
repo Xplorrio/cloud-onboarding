@@ -151,8 +151,7 @@ module "xplorr" {
 }
 ```
 
-Or a git source pinned to a release tag. Git sources work once this
-repository is public:
+Or a git source pinned to a release tag:
 
 ```hcl
 module "xplorr" {
