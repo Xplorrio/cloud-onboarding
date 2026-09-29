@@ -3,10 +3,10 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## v0.2.0 (unreleased)
+## v0.2.0 (2026-09-29)
 
-Proposed minor version: it adds new, opt-in templates and inputs. Nothing
-changes for existing users until they turn write access on.
+Minor version: it adds new, opt-in templates and inputs. Nothing changes for
+existing users until they turn write access on.
 
 ### Added
 
