@@ -16,9 +16,3 @@ create_billing_dataset = false
 
 # Optional. Grants Billing Account Viewer on the billing account.
 # billing_account_id = "000000-000000-000000"
-
-# Optional write access, off by default: a separate xplorrWrite custom role
-# for the approved actions you list. See the README, Write access.
-enable_write_role = false
-write_actions     = ["stop_idle_instance"]
-# write_protect_tag = "my-project-id/xplorr-protect"

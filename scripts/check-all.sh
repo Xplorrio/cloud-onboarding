@@ -58,8 +58,7 @@ check_terragrunt() {
       terragrunt hcl fmt --check &&
       terragrunt hcl validate &&
       (cd single-account && env -u XPLORR_MODULE_SOURCE terragrunt validate --non-interactive) &&
-      (cd keyless && env -u XPLORR_MODULE_SOURCE terragrunt validate --non-interactive) &&
-      (cd write-role && env -u XPLORR_WRITE_MODULE_SOURCE terragrunt validate --non-interactive)
+      (cd keyless && env -u XPLORR_MODULE_SOURCE terragrunt validate --non-interactive)
   )
 }
 
@@ -85,7 +84,7 @@ while IFS= read -r dir; do
   run "terraform $dir" check_terraform_root "$dir"
 done < <(terraform_roots)
 run "terragrunt" check_terragrunt
-run "cfn-lint" cfn-lint aws/cloudformation/role.yaml aws/cloudformation/stackset.yaml aws/cloudformation/write-role.yaml
+run "cfn-lint" cfn-lint aws/cloudformation/role.yaml aws/cloudformation/stackset.yaml
 run "stackset embeds role.yaml" python3 scripts/sync-stackset.py --check
 run "AWS policy drift" python3 scripts/check-policy-drift.py
 run "bicep" check_bicep

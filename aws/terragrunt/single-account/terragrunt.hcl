@@ -16,10 +16,4 @@ inputs = {
   iam_external_id        = ""
   region                 = include.root.locals.region
   attach_readonly_access = false
-
-  # Opt-in write access, off by default: a separate xplorr-write role for the
-  # action types you list, with its own external ID (openssl rand -hex 16).
-  enable_write_role     = false
-  write_actions         = ["stop_idle_instance"]
-  write_iam_external_id = ""
 }

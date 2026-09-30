@@ -26,10 +26,4 @@ module "xplorr" {
   bigquery_location      = var.bigquery_location
   billing_table          = var.billing_table
   billing_account_id     = var.billing_account_id
-
-  # Opt-in write access, off by default: a separate custom role for the
-  # approved actions you list. The viewer roles are not changed.
-  enable_write_role = var.enable_write_role
-  write_actions     = var.write_actions
-  write_protect_tag = var.write_protect_tag
 }

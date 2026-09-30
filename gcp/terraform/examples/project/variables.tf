@@ -32,21 +32,3 @@ variable "billing_account_id" {
   type        = string
   default     = null
 }
-
-variable "enable_write_role" {
-  description = "Opt in to write access: create the xplorrWrite custom role for the action types in write_actions. Off by default."
-  type        = bool
-  default     = false
-}
-
-variable "write_actions" {
-  description = "Action types the custom role may carry out: stop_idle_instance."
-  type        = list(string)
-  default     = []
-}
-
-variable "write_protect_tag" {
-  description = "Optional namespaced tag key, for example my-project-id/xplorr-protect. Instances tagged with it and the value true are refused."
-  type        = string
-  default     = null
-}

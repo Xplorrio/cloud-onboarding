@@ -42,12 +42,4 @@ module "xplorr" {
   enable_savings_plan_reader        = var.enable_savings_plan_reader
   focus_export_scopes               = var.focus_export_scopes
   create_client_secret              = var.create_client_secret
-
-  # Opt-in write access, off by default: a separate custom role for the
-  # approved actions you list. The read-only roles are not changed.
-  enable_write_role = var.enable_write_role
-  write_actions     = var.write_actions
-  write_scopes      = var.write_scopes
-  # xplorr_principal only: Xplorr's separate write app, shown by Xplorr.
-  xplorr_write_application_id = var.xplorr_write_application_id
 }

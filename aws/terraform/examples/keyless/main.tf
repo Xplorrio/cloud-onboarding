@@ -24,10 +24,4 @@ module "xplorr" {
   trust_mode        = "xplorr_principal"
   xplorr_account_id = var.xplorr_account_id
   iam_external_id   = var.iam_external_id
-
-  # Opt-in write access, off by default. A separate role; the read-only role
-  # above is not changed.
-  enable_write_role     = var.enable_write_role
-  write_actions         = var.write_actions
-  write_iam_external_id = var.write_iam_external_id
 }

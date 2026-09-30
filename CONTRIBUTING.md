@@ -48,18 +48,15 @@ is skipped and any other match still fails.
 
 ## Rules for changes
 
-- **Permissions.** Every permission of a read-only role must be a read that
-  Xplorr actually calls (`services/cloud-sync-service/src` in the Xplorr app).
-  The AWS policy lives in both `aws/terraform/policy.tf` and
-  `aws/cloudformation/role.yaml`; `scripts/check-policy-drift.py` fails if they
-  differ. After editing `role.yaml`, run `python3 scripts/sync-stackset.py` to
-  refresh the copy in `stackset.yaml`.
-- **Write permissions.** A write permission never goes into a read-only role.
-  It belongs to the opt-in write role, under one action type from the Xplorr
-  actions catalog, off by default, with the narrowest resource and a guard
-  where the cloud has one. The AWS write policy lives in both
-  `aws/terraform/modules/write-role/main.tf` and
-  `aws/cloudformation/write-role.yaml`; the drift check covers it too.
+- **Permissions.** Every permission must be a read that Xplorr actually calls
+  (`services/cloud-sync-service/src` in the Xplorr app). The AWS policy lives in
+  both `aws/terraform/policy.tf` and `aws/cloudformation/role.yaml`;
+  `scripts/check-policy-drift.py` fails if they differ. After editing
+  `role.yaml`, run `python3 scripts/sync-stackset.py` to refresh the copy in
+  `stackset.yaml`.
+- **Read only.** Xplorr needs read only access and never changes resources in
+  a customer's cloud. A change that adds a permission able to create, modify
+  or delete anything, or a role or identity for doing so, is not accepted.
 - **Placeholders only.** Use `111111111111`, `00000000-0000-0000-0000-000000000000`,
   `my-project`, `example.com`. Never a real account, tenant, subscription,
   project, email or customer name.
@@ -81,7 +78,7 @@ pushes it to a branch in this repository to run CI there.
 - Releases are annotated tags, `vMAJOR.MINOR.PATCH`, cut from `main` after CI
   passes, with an entry in `CHANGELOG.md`.
 - **Tags are immutable.** Customers pin module sources to a tag
-  (`?ref=v0.1.1`), so a pushed tag is never moved, deleted or re-pushed. Fix a
+  (`?ref=v0.0.1`), so a pushed tag is never moved, deleted or re-pushed. Fix a
   mistake with a new patch tag.
 - Update the `?ref=` examples in the READMEs to the new tag in the same commit
   as the changelog entry.
@@ -89,8 +86,8 @@ pushes it to a branch in this repository to run CI there.
   creates, is a breaking change: bump the minor version while below 1.0.
 
 ```bash
-git tag -a v0.1.2 -m "v0.1.2"
-GIT_SSH_COMMAND="ssh -i <your key>" git push origin main v0.1.2
+git tag -a v0.0.1 -m "v0.0.1"
+GIT_SSH_COMMAND="ssh -i <your key>" git push origin main v0.0.1
 ```
 
 ## Before making this repository public

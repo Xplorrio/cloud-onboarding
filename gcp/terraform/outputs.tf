@@ -68,35 +68,5 @@ output "next_steps" {
     local.keyless ? "2. Keyless GCP onboarding is coming soon; keep this service account until the Xplorr form offers it." : (local.create_key ? "2. terraform output -raw xplorr_credentials_json > ${local.credentials_file_name}" : "2. ${local.key_command}"),
     local.keyless || local.create_key ? null : "3. ${local.credentials_command}",
     local.keyless ? null : "${local.create_key ? "3" : "4"}. In Xplorr, Infrastructure > Cloud Accounts > Connect account > Google Cloud Platform. GCP project ID: ${var.project_id}. Credentials (JSON): the contents of ${local.credentials_file_name}. Then delete ${local.credentials_file_name}${local.create_key ? "" : " and ${local.key_file_name}"}.",
-    var.enable_write_role ? "Write access (opt in): the separate service account ${google_service_account.write[0].email} holds the custom role ${var.write_role_id}, which may carry out ${join(", ", var.write_actions)} in ${var.project_id}.${local.keyless || local.create_key ? "" : " Create its own key with: gcloud iam service-accounts keys create xplorr-write-key.json --iam-account=${google_service_account.write[0].email} --project=${var.project_id}"} Xplorr uses it only after a person in your Xplorr organization approves an action. Print the values with: terraform output -json xplorr_write_access" : null,
   ]))
 }
-
-output "xplorr_write_access" {
-  description = "With enable_write_role. What Xplorr asks for when you turn on write access: the separate write service account, the custom role ID, the action types and the permissions (and, in xplorr_principal mode, who may impersonate it). Null when the write role is off."
-  value = var.enable_write_role ? {
-    custom_role_id  = google_project_iam_custom_role.write[0].name
-    service_account = google_service_account.write[0].email
-    impersonated_by = local.keyless ? var.xplorr_write_service_account_email : null
-    actions         = var.write_actions
-    permissions     = local.write_role_permissions
-    protect_tag     = var.write_protect_tag
-  } : null
-}
-
-output "write_service_account_email" {
-  description = "With enable_write_role. The separate service account that holds the write role. Null when the write role is off."
-  value       = var.enable_write_role ? google_service_account.write[0].email : null
-}
-
-output "write_key_create_command" {
-  description = "With enable_write_role, customer_principal only. Run this yourself to create the write service account's own key, so it never lands in Terraform state."
-  value       = var.enable_write_role && !local.keyless ? "gcloud iam service-accounts keys create xplorr-write-key.json --iam-account=${google_service_account.write[0].email} --project=${var.project_id}" : null
-}
-
-output "xplorr_write_key_json" {
-  description = "Only with enable_write_role and create_key = true: the write service account's key file. Write it to a file with: terraform output -raw xplorr_write_key_json > xplorr-write-key.json. The same key is in your state in plain text."
-  sensitive   = true
-  value       = var.enable_write_role && local.create_key ? base64decode(google_service_account_key.write[0].private_key) : null
-}
-
