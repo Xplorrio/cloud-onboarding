@@ -113,7 +113,7 @@ jobs:
           set -euo pipefail
           terragrunt hcl fmt --check
           terragrunt hcl validate
-          for dir in single-account keyless write-role; do
+          for dir in single-account keyless; do
             (cd "$dir" && terragrunt validate --non-interactive)
           done
 

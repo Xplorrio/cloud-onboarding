@@ -25,21 +25,3 @@ variable "iam_external_id" {
   type        = string
   default     = ""
 }
-
-variable "enable_write_role" {
-  description = "Opt in to write access: create the separate xplorr-write role for the action types in write_actions. Off by default."
-  type        = bool
-  default     = false
-}
-
-variable "write_actions" {
-  description = "Action types the write role may carry out: stop_idle_instance, delete_unattached_ebs_volume, release_unassociated_eip."
-  type        = list(string)
-  default     = []
-}
-
-variable "write_iam_external_id" {
-  description = "The write role's own external ID, different from iam_external_id. Optional; generate one with: openssl rand -hex 16."
-  type        = string
-  default     = ""
-}

@@ -50,45 +50,13 @@ output "user_arn" {
 
 output "next_steps" {
   description = "What to do after apply."
-  value = join("\n", concat(local.customer_mode ? compact([
+  value = local.customer_mode ? join("\n", compact([
     local.create_user ? "1. Create an access key for the IAM user ${var.user_name}: IAM > Users > ${var.user_name} > Security credentials > Create access key > Third-party service. Terraform does not create it, so the secret never lands in the Terraform state. Skip this if your Xplorr organization already has base keys for this user." : "1. No key is needed for this account: Xplorr uses the base keys of the user it trusts (${join(", ", var.trusted_principal_arns)}). Make sure that user may assume ${module.iam_role.arn} (user_assumable_role_arns or user_assumable_org_id where the user is created).",
     "2. In Xplorr go to Infrastructure > Cloud Accounts > Connect account > AWS > IAM role.",
     "3. If your Xplorr organization has no base keys yet, enter that access key ID and secret access key and save them.",
     "4. Enter AWS account ID ${data.aws_caller_identity.current.account_id}, role name ${var.role_name}${var.iam_external_id != "" ? ", external ID ${var.iam_external_id}" : ""} and region ${var.region}, then click Test connection and Connect.",
-    ]) : [
+    ])) : join("\n", [
     "This role trusts Xplorr's AWS account ${var.xplorr_account_id} (roles matching ${var.xplorr_principal_role_pattern} only) with external ID ${var.iam_external_id}.",
     "It needs Xplorr keyless onboarding, which is coming soon. Until Xplorr can assume roles as its own account, use trust_mode = customer_principal.",
-    ], var.enable_write_role ? [
-    "Write access (opt in): the separate role ${var.write_role_name} may carry out ${join(", ", var.write_actions)}${var.write_iam_external_id != "" ? ", with its own external ID ${var.write_iam_external_id}" : ""}. Xplorr uses it only after a person in your Xplorr organization approves an action. Print the values Xplorr asks for with: terraform output -json xplorr_write_access_form",
-  ] : []))
-}
-
-output "xplorr_write_access_form" {
-  description = "With enable_write_role. The values Xplorr asks for when you turn on write access for this account: account ID, write role name and ARN, the write external ID and the action types. Null when the write role is off."
-  value       = var.enable_write_role ? module.write_role[0].xplorr_write_access_form : null
-}
-
-output "write_role_arn" {
-  description = "With enable_write_role. ARN of the write role. In customer_principal mode, add it to user_assumable_role_arns where the user is created, when that is another account."
-  value       = var.enable_write_role ? module.write_role[0].role_arn : null
-}
-
-output "write_role_name" {
-  description = "With enable_write_role. Name of the write role."
-  value       = var.enable_write_role ? var.write_role_name : null
-}
-
-output "write_iam_external_id" {
-  description = "With enable_write_role. The write role's external ID. Null when there is none."
-  value       = var.enable_write_role ? module.write_role[0].iam_external_id : null
-}
-
-output "write_trusted_principal" {
-  description = "With enable_write_role. Who may assume the write role: the same principals as the read-only role (customer_principal), or only Xplorr's actions role ARN (xplorr_principal)."
-  value       = var.enable_write_role ? module.write_role[0].trusted_principal : null
-}
-
-output "write_granted_permissions" {
-  description = "With enable_write_role. Every IAM action the write role allows."
-  value       = var.enable_write_role ? module.write_role[0].granted_permissions : null
+  ])
 }

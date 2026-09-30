@@ -31,10 +31,4 @@ module "xplorr" {
   role_name              = var.role_name
   iam_external_id        = var.iam_external_id
   region                 = var.region
-
-  # Opt-in write access, off by default. A separate role; the read-only role
-  # above is not changed.
-  enable_write_role     = var.enable_write_role
-  write_actions         = var.write_actions
-  write_iam_external_id = var.write_iam_external_id
 }

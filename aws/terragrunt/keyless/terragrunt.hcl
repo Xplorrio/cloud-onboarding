@@ -17,12 +17,4 @@ inputs = {
   xplorr_account_id = "732121667940"
   iam_external_id   = "the-value-xplorr-shows-you"
   region            = include.root.locals.region
-
-  # Opt-in write access, off by default: a separate xplorr-write role for the
-  # action types you list, with the write access external ID Xplorr shows you.
-  enable_write_role     = false
-  write_actions         = ["stop_idle_instance"]
-  write_iam_external_id = "the-write-value-xplorr-shows-you"
-  # Only Xplorr's actions role may assume the write role.
-  write_xplorr_principal_arn = "arn:aws:iam::732121667940:role/xplorr-actions"
 }

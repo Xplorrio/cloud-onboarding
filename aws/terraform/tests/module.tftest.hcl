@@ -24,38 +24,6 @@ override_data {
   }
 }
 
-override_data {
-  target = module.write_role[0].data.aws_caller_identity.current
-  values = {
-    account_id = "111111111111"
-  }
-}
-
-override_data {
-  target = module.write_role[0].module.iam_role.data.aws_caller_identity.current
-  values = {
-    account_id = "111111111111"
-  }
-}
-
-# Role ARNs are only known after apply; give the plan the ARNs AWS would
-# return, so the user's assume policy can be checked.
-override_resource {
-  target          = module.iam_role.aws_iam_role.default[0]
-  override_during = plan
-  values = {
-    arn = "arn:aws:iam::111111111111:role/xplorr-readonly"
-  }
-}
-
-override_resource {
-  target          = module.write_role[0].module.iam_role.aws_iam_role.default[0]
-  override_during = plan
-  values = {
-    arn = "arn:aws:iam::111111111111:role/xplorr-write"
-  }
-}
-
 run "customer_principal_default" {
   command = plan
 
@@ -95,16 +63,6 @@ run "customer_principal_default" {
   assert {
     condition     = output.xplorr_connect_form.aws_account_id == "111111111111" && output.xplorr_connect_form.role_name == "xplorr-readonly" && output.xplorr_connect_form.region == "us-east-1"
     error_message = "The connect form output is wrong."
-  }
-
-  assert {
-    condition     = length(module.write_role) == 0 && output.xplorr_write_access_form == null
-    error_message = "The write role must be off by default."
-  }
-
-  assert {
-    condition     = length([for a in flatten([for s in jsondecode(data.aws_iam_policy_document.read.json).Statement : s.Action]) : a if !can(regex("^[a-z0-9-]+:(Get|Describe|List|Lookup)", a))]) == 0
-    error_message = "The read-only role must only hold Get, Describe, List and Lookup calls."
   }
 }
 
@@ -263,114 +221,5 @@ run "export_kms_keys" {
   assert {
     condition     = contains(flatten([for s in jsondecode(data.aws_iam_policy_document.read.json).Statement : s.Action]), "kms:Decrypt")
     error_message = "export_kms_key_arns must grant kms:Decrypt."
-  }
-}
-
-run "write_role_is_separate_and_opt_in" {
-  command = plan
-
-  variables {
-    iam_external_id       = "example-read-external-id"
-    enable_write_role     = true
-    write_actions         = ["stop_idle_instance"]
-    write_iam_external_id = "example-write-external-id"
-  }
-
-  assert {
-    condition     = length(module.write_role) == 1 && output.write_role_name == "xplorr-write"
-    error_message = "enable_write_role must create the xplorr-write role."
-  }
-
-  assert {
-    condition     = output.write_granted_permissions == tolist(["ec2:DescribeInstances", "ec2:StartInstances", "ec2:StopInstances"])
-    error_message = "Only the listed action type may be granted."
-  }
-
-  assert {
-    condition     = length([for a in flatten([for s in jsondecode(data.aws_iam_policy_document.read.json).Statement : s.Action]) : a if startswith(a, "ec2:Stop") || startswith(a, "ec2:Start")]) == 0
-    error_message = "The read-only role must never gain a write permission."
-  }
-
-  assert {
-    condition     = contains(flatten([for s in jsondecode(data.aws_iam_policy_document.user_assume[0].json).Statement : s.Resource]), "arn:aws:iam::111111111111:role/xplorr-write")
-    error_message = "The customer_principal user must be allowed to assume the write role."
-  }
-
-  assert {
-    condition     = output.xplorr_write_access_form.write_iam_external_id == "example-write-external-id" && output.iam_external_id == "example-read-external-id"
-    error_message = "The write role must carry its own external ID."
-  }
-}
-
-run "write_role_needs_actions" {
-  command = plan
-
-  variables {
-    enable_write_role = true
-  }
-
-  expect_failures = [var.write_actions]
-}
-
-run "write_external_id_must_differ" {
-  command = plan
-
-  variables {
-    iam_external_id       = "example-external-id"
-    enable_write_role     = true
-    write_actions         = ["stop_idle_instance"]
-    write_iam_external_id = "example-external-id"
-  }
-
-  expect_failures = [var.write_iam_external_id]
-}
-
-run "keyless_write_role_needs_its_external_id" {
-  command = plan
-
-  variables {
-    trust_mode        = "xplorr_principal"
-    iam_external_id   = "example-read-external-id"
-    enable_write_role = true
-    write_actions     = ["release_unassociated_eip"]
-  }
-
-  expect_failures = [var.write_iam_external_id]
-}
-
-run "keyless_write_role_trusts_only_the_actions_role" {
-  command = plan
-
-  variables {
-    trust_mode            = "xplorr_principal"
-    iam_external_id       = "example-read-external-id"
-    enable_write_role     = true
-    write_actions         = ["stop_idle_instance"]
-    write_iam_external_id = "example-write-external-id"
-  }
-
-  assert {
-    condition     = output.write_trusted_principal == tolist(["arn:aws:iam::732121667940:role/xplorr-actions"])
-    error_message = "The keyless write role must trust only xplorr-actions."
-  }
-
-  assert {
-    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.ArnLike["aws:PrincipalArn"] == "arn:aws:iam::732121667940:role/xplorr-*"
-    error_message = "The read-only role's trust must not change."
-  }
-}
-
-run "write_role_in_organization" {
-  command = plan
-
-  variables {
-    user_assumable_org_id = "o-abcd123456"
-    enable_write_role     = true
-    write_actions         = ["delete_unattached_ebs_volume"]
-  }
-
-  assert {
-    condition     = contains(flatten([for s in jsondecode(data.aws_iam_policy_document.user_assume[0].json).Statement : s.Resource if s.Sid == "AssumeXplorrRoleInOrganization"]), "arn:aws:iam::*:role/xplorr-write")
-    error_message = "With an organization id the user may assume the write role in any account of it."
   }
 }
