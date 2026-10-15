@@ -1,7 +1,7 @@
 # Xplorr on AWS: Terraform module
 
 Creates the read-only IAM role Xplorr assumes to read your AWS costs,
-commitments, credits, invoices and resource inventory. Every permission is a
+commitments, credits and resource inventory. Every permission is a
 read. Xplorr never creates, changes or deletes anything in your account.
 
 Built on the CloudDrove modules
@@ -165,7 +165,7 @@ organization from syncing until new keys are saved.
 | Costs empty after connecting | Cost Explorer was just enabled and has not populated yet (up to 24 hours) |
 | Per-resource costs empty | Resource-level data is off in Cost Management preferences |
 | FOCUS or carbon export reads fail with `AccessDenied` on `kms:Decrypt` | The bucket uses SSE-KMS; add its key to `export_kms_key_arns` (and allow the role in the key policy if the key does not delegate to IAM) |
-| Credits or invoices missing for a member account | They belong to the payer. Connect the management account for organization-wide costs, credits and invoices |
+| Credits missing for a member account | They belong to the payer. Connect the management account for organization-wide costs and credits |
 
 ## Permissions
 
@@ -181,7 +181,6 @@ makes (source: `services/cloud-sync-service/src` in the Xplorr app).
 | Inventory | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeVpcs`, `ec2:DescribeSubnets`, `ec2:DescribeSecurityGroups`, `ec2:DescribeNatGateways`, `ec2:DescribeInternetGateways`, `elasticloadbalancing:DescribeLoadBalancers`, `tag:GetResources` | Resource inventory and network costs |
 | IdleDetection | `cloudwatch:GetMetricStatistics` | Idle EC2 and unattached EBS findings |
 | Pricing | `pricing:GetProducts` | On-demand rates for sizing recommendations |
-| Invoices | `invoicing:ListInvoiceSummaries` | Invoice reconciliation |
 | AuditLog (`enable_audit_log`) | `cloudtrail:LookupEvents` | Called on each sync to record whether audit log access works; will be used for anomaly root cause analysis |
 | Export buckets (`export_bucket_arns`) | `s3:ListBucket`, `s3:GetObject` | Optional FOCUS or carbon footprint exports in S3 |
 | Export keys (`export_kms_key_arns`) | `kms:Decrypt` | Only when those buckets use SSE-KMS; not needed for the default SSE-S3 encryption |
