@@ -1,7 +1,7 @@
 # Xplorr on AWS: Terraform module
 
 Creates the read-only IAM role Xplorr assumes to read your AWS costs,
-commitments, credits, invoices and resource inventory. Every permission is a
+commitments, credits and resource inventory. Every permission is a
 read. Xplorr never creates, changes or deletes anything in your account.
 
 Built on the CloudDrove modules
@@ -165,7 +165,7 @@ organization from syncing until new keys are saved.
 | Costs empty after connecting | Cost Explorer was just enabled and has not populated yet (up to 24 hours) |
 | Per-resource costs empty | Resource-level data is off in Cost Management preferences |
 | FOCUS or carbon export reads fail with `AccessDenied` on `kms:Decrypt` | The bucket uses SSE-KMS; add its key to `export_kms_key_arns` (and allow the role in the key policy if the key does not delegate to IAM) |
-| Credits or invoices missing for a member account | They belong to the payer. Connect the management account for organization-wide costs, credits and invoices |
+| Credits missing for a member account | They belong to the payer. Connect the management account for organization-wide costs and credits |
 
 ## Permissions
 
