@@ -473,10 +473,6 @@ Resources:
                         Effect: Allow
                         Action: pricing:GetProducts
                         Resource: "*"
-                      - Sid: Invoices
-                        Effect: Allow
-                        Action: invoicing:ListInvoiceSummaries
-                        Resource: "*"
                       - !If
                         - AuditLog
                         - Sid: AuditLog

@@ -79,14 +79,6 @@ data "aws_iam_policy_document" "read" {
     resources = ["*"]
   }
 
-  # Reconciling Xplorr's totals against your invoices.
-  statement {
-    sid       = "Invoices"
-    effect    = "Allow"
-    actions   = ["invoicing:ListInvoiceSummaries"]
-    resources = ["*"]
-  }
-
   # CloudTrail management events, for anomaly root cause analysis.
   dynamic "statement" {
     for_each = var.enable_audit_log ? [1] : []

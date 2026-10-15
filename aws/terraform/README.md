@@ -181,7 +181,6 @@ makes (source: `services/cloud-sync-service/src` in the Xplorr app).
 | Inventory | `ec2:DescribeRegions`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeVpcs`, `ec2:DescribeSubnets`, `ec2:DescribeSecurityGroups`, `ec2:DescribeNatGateways`, `ec2:DescribeInternetGateways`, `elasticloadbalancing:DescribeLoadBalancers`, `tag:GetResources` | Resource inventory and network costs |
 | IdleDetection | `cloudwatch:GetMetricStatistics` | Idle EC2 and unattached EBS findings |
 | Pricing | `pricing:GetProducts` | On-demand rates for sizing recommendations |
-| Invoices | `invoicing:ListInvoiceSummaries` | Invoice reconciliation |
 | AuditLog (`enable_audit_log`) | `cloudtrail:LookupEvents` | Called on each sync to record whether audit log access works; will be used for anomaly root cause analysis |
 | Export buckets (`export_bucket_arns`) | `s3:ListBucket`, `s3:GetObject` | Optional FOCUS or carbon footprint exports in S3 |
 | Export keys (`export_kms_key_arns`) | `kms:Decrypt` | Only when those buckets use SSE-KMS; not needed for the default SSE-S3 encryption |
