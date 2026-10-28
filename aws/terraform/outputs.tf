@@ -55,8 +55,15 @@ output "next_steps" {
     "2. In Xplorr go to Infrastructure > Cloud Accounts > Connect account > AWS > IAM role.",
     "3. If your Xplorr organization has no base keys yet, enter that access key ID and secret access key and save them.",
     "4. Enter AWS account ID ${data.aws_caller_identity.current.account_id}, role name ${var.role_name}${var.iam_external_id != "" ? ", external ID ${var.iam_external_id}" : ""} and region ${var.region}, then click Test connection and Connect.",
+    "5. ${local.resource_data_step}",
     ])) : join("\n", [
     "This role trusts Xplorr's AWS account ${var.xplorr_account_id} (roles matching ${var.xplorr_principal_role_pattern} only) with external ID ${var.iam_external_id}.",
     "It needs Xplorr keyless onboarding, which is coming soon. Until Xplorr can assume roles as its own account, use trust_mode = customer_principal.",
+    "After connecting: ${local.resource_data_step}",
   ])
+}
+
+locals {
+  # No AWS API or Terraform resource sets Cost Management preferences, so this stays a console step.
+  resource_data_step = "For per resource costs (Cost Analysis by resource, tag allocation), sign in to the management account of your AWS Organization (or this account if it is standalone) and open Billing and Cost Management > Cost Management preferences > Cost Explorer. Tick Resource-level data at daily granularity, select EC2-Instances, Elastic Load Balancing, VPC and Route 53, and save. Data appears within 48 hours and covers the last 14 days. AWS turns it off again if nobody uses it for three months."
 }

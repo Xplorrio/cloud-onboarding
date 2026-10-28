@@ -44,10 +44,18 @@ method. So in `customer_principal` mode:
   example the `IAMFullAccess` managed policy, or administrator access).
 - Cost Explorer enabled in the account (open **Billing > Cost Explorer** once;
   the first load takes up to 24 hours).
-- Optional: for per-resource costs, turn on resource-level data in
-  **Billing and Cost Management > Cost Management preferences**. Without it
-  `ce:GetCostAndUsageWithResources` returns no data and per-resource costs stay
-  empty, while everything else works.
+- Resource-level data in Cost Explorer, for per-resource costs (Cost Analysis
+  by resource and tag allocation). In the management account of your AWS
+  Organization (or this account if it is standalone), open **Billing and Cost
+  Management > Cost Management preferences > Cost Explorer**, tick
+  **Resource-level data at daily granularity**, select EC2-Instances, Elastic
+  Load Balancing, VPC and Route 53, and save. Data appears within 48 hours and
+  covers the last 14 days; leave the hourly option off. AWS turns this off again
+  if nobody in the organization uses it for three months. Without it
+  `ce:GetCostAndUsageWithResources` returns no data and Xplorr shows per-resource
+  costs as Not measured, while everything else works. No AWS API or Terraform
+  resource sets this preference, so this module cannot do it for you; the
+  `next_steps` output repeats it.
 - In Xplorr, the member or admin role. Saving the organization's base keys
   needs admin.
 
