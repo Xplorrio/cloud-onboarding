@@ -44,7 +44,11 @@ run "customer_principal_default" {
       "ec2:DescribeVolumes", "ec2:DescribeVpcs", "ec2:DescribeSubnets",
       "ec2:DescribeSecurityGroups", "ec2:DescribeNatGateways", "ec2:DescribeInternetGateways",
       "elasticloadbalancing:DescribeLoadBalancers", "tag:GetResources",
-      "cloudwatch:GetMetricStatistics", "pricing:GetProducts",
+      "lightsail:GetInstances", "lightsail:GetStaticIps", "lightsail:GetInstanceSnapshots",
+      "lightsail:GetKeyPairs", "lightsail:GetDisks", "lightsail:GetDiskSnapshots",
+      "lightsail:GetLoadBalancers", "lightsail:GetRelationalDatabases",
+      "cloudwatch:GetMetricStatistics", "cloudwatch:ListMetrics", "rds:DescribeDBInstances",
+      "pricing:GetProducts",
       "cloudtrail:LookupEvents",
     ], flatten([for s in jsondecode(data.aws_iam_policy_document.read.json).Statement : s.Action]))) == 0
     error_message = "The read policy is missing an action Xplorr calls."
