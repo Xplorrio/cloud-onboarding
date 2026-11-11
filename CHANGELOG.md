@@ -3,6 +3,22 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.0.3 (2026-11-11)
+
+### AWS
+
+- Lightsail reads in the `Inventory` statement: `lightsail:GetInstances`,
+  `GetStaticIps`, `GetInstanceSnapshots`, `GetKeyPairs`, `GetDisks`,
+  `GetDiskSnapshots`, `GetLoadBalancers` and `GetRelationalDatabases`. Xplorr
+  uses them to replace stale Lightsail ARNs from the tagging API with real
+  names and state.
+- New `StorageAndTraffic` statement with `cloudwatch:ListMetrics` and
+  `rds:DescribeDBInstances`, for the Storage page and network link traffic:
+  finding S3 buckets, EFS file systems, Transit Gateway attachments and VPN
+  tunnels that have metrics, and reading RDS allocated storage.
+- All are reads. Without them those features degrade and the console names
+  the missing permission.
+
 ## v0.0.1 (2026-09-30)
 
 First release. Infrastructure code that gives Xplorr read only access to your

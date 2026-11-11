@@ -464,10 +464,24 @@ Resources:
                           - ec2:DescribeInternetGateways
                           - elasticloadbalancing:DescribeLoadBalancers
                           - tag:GetResources
+                          - lightsail:GetInstances
+                          - lightsail:GetStaticIps
+                          - lightsail:GetInstanceSnapshots
+                          - lightsail:GetKeyPairs
+                          - lightsail:GetDisks
+                          - lightsail:GetDiskSnapshots
+                          - lightsail:GetLoadBalancers
+                          - lightsail:GetRelationalDatabases
                         Resource: "*"
                       - Sid: IdleDetection
                         Effect: Allow
                         Action: cloudwatch:GetMetricStatistics
+                        Resource: "*"
+                      - Sid: StorageAndTraffic
+                        Effect: Allow
+                        Action:
+                          - cloudwatch:ListMetrics
+                          - rds:DescribeDBInstances
                         Resource: "*"
                       - Sid: Pricing
                         Effect: Allow

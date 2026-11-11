@@ -44,7 +44,9 @@ data "aws_iam_policy_document" "read" {
   }
 
   # The resource inventory and network costs by VPC, NAT gateway and load
-  # balancer. tag:GetResources finds resources in every service.
+  # balancer. tag:GetResources finds resources in every service. The Lightsail
+  # reads replace stale Lightsail ARNs from the tagging API with real names and
+  # state.
   statement {
     sid    = "Inventory"
     effect = "Allow"
@@ -59,6 +61,14 @@ data "aws_iam_policy_document" "read" {
       "ec2:DescribeInternetGateways",
       "elasticloadbalancing:DescribeLoadBalancers",
       "tag:GetResources",
+      "lightsail:GetInstances",
+      "lightsail:GetStaticIps",
+      "lightsail:GetInstanceSnapshots",
+      "lightsail:GetKeyPairs",
+      "lightsail:GetDisks",
+      "lightsail:GetDiskSnapshots",
+      "lightsail:GetLoadBalancers",
+      "lightsail:GetRelationalDatabases",
     ]
     resources = ["*"]
   }
@@ -68,6 +78,19 @@ data "aws_iam_policy_document" "read" {
     sid       = "IdleDetection"
     effect    = "Allow"
     actions   = ["cloudwatch:GetMetricStatistics"]
+    resources = ["*"]
+  }
+
+  # The Storage page and network link traffic: which S3 buckets, EFS file
+  # systems, Transit Gateway attachments and VPN tunnels have metrics, and RDS
+  # allocated storage. The metric values come from GetMetricStatistics above.
+  statement {
+    sid    = "StorageAndTraffic"
+    effect = "Allow"
+    actions = [
+      "cloudwatch:ListMetrics",
+      "rds:DescribeDBInstances",
+    ]
     resources = ["*"]
   }
 
