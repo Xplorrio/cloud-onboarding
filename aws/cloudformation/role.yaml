@@ -347,6 +347,8 @@ Resources:
                 Action:
                   - ecs:ListTasks
                   - ecs:DescribeTasks
+                  - ecs:DescribeClusters
+                  - ecs:DescribeCapacityProviders
                 Resource: "*"
               - Sid: Pricing
                 Effect: Allow
