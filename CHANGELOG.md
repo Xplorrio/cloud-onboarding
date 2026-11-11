@@ -3,7 +3,7 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## v0.0.3 (2026-11-11)
 
 ### AWS
 
