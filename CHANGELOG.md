@@ -3,6 +3,15 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.0.5 (2026-11-11)
+
+### AWS
+
+- `ecs:DescribeClusters` and `ecs:DescribeCapacityProviders` in the
+  `Containers` statement. Xplorr uses them to show each ECS capacity provider
+  with its EC2 instances, instance types and cost. Both are reads. Without
+  them the ECS page groups ECS instances by Auto Scaling group.
+
 ## v0.0.4 (2026-11-11)
 
 ### AWS

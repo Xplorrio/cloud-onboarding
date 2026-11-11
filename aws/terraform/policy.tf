@@ -95,13 +95,16 @@ data "aws_iam_policy_document" "read" {
   }
 
   # Which ECS tasks are running now, with their service, launch type and
-  # capacity provider. The tagging API also returns stopped tasks.
+  # capacity provider (the tagging API also returns stopped tasks), and each
+  # cluster's capacity providers with their Auto Scaling groups.
   statement {
     sid    = "Containers"
     effect = "Allow"
     actions = [
       "ecs:ListTasks",
       "ecs:DescribeTasks",
+      "ecs:DescribeClusters",
+      "ecs:DescribeCapacityProviders",
     ]
     resources = ["*"]
   }
