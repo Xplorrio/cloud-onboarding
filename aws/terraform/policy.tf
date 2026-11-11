@@ -94,6 +94,18 @@ data "aws_iam_policy_document" "read" {
     resources = ["*"]
   }
 
+  # Which ECS tasks are running now, with their service, launch type and
+  # capacity provider. The tagging API also returns stopped tasks.
+  statement {
+    sid    = "Containers"
+    effect = "Allow"
+    actions = [
+      "ecs:ListTasks",
+      "ecs:DescribeTasks",
+    ]
+    resources = ["*"]
+  }
+
   # On-demand rates for sizing recommendations.
   statement {
     sid       = "Pricing"

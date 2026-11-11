@@ -3,6 +3,15 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.0.4 (2026-11-11)
+
+### AWS
+
+- New `Containers` statement with `ecs:ListTasks` and `ecs:DescribeTasks`.
+  Xplorr uses them to count the ECS tasks running now; the tagging API also
+  returns stopped tasks. Both are reads. Without them the ECS page counts the
+  tasks seen in the last sync and names the missing permission.
+
 ## v0.0.3 (2026-11-11)
 
 ### AWS

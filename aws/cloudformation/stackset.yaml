@@ -483,6 +483,12 @@ Resources:
                           - cloudwatch:ListMetrics
                           - rds:DescribeDBInstances
                         Resource: "*"
+                      - Sid: Containers
+                        Effect: Allow
+                        Action:
+                          - ecs:ListTasks
+                          - ecs:DescribeTasks
+                        Resource: "*"
                       - Sid: Pricing
                         Effect: Allow
                         Action: pricing:GetProducts
