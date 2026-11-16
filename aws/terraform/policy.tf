@@ -109,6 +109,21 @@ data "aws_iam_policy_document" "read" {
     resources = ["*"]
   }
 
+  # Recommendations beyond idle EC2 and unattached EBS: AWS Cost Optimization
+  # Hub's own advice (rightsizing, idle, Graviton for EC2, EBS, Lambda, ECS,
+  # RDS and more), CloudWatch log groups kept forever, and large S3 buckets
+  # without a lifecycle rule.
+  statement {
+    sid    = "Recommendations"
+    effect = "Allow"
+    actions = [
+      "cost-optimization-hub:ListRecommendations",
+      "logs:DescribeLogGroups",
+      "s3:GetLifecycleConfiguration",
+    ]
+    resources = ["*"]
+  }
+
   # On-demand rates for sizing recommendations.
   statement {
     sid       = "Pricing"

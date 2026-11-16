@@ -350,6 +350,13 @@ Resources:
                   - ecs:DescribeClusters
                   - ecs:DescribeCapacityProviders
                 Resource: "*"
+              - Sid: Recommendations
+                Effect: Allow
+                Action:
+                  - cost-optimization-hub:ListRecommendations
+                  - logs:DescribeLogGroups
+                  - s3:GetLifecycleConfiguration
+                Resource: "*"
               - Sid: Pricing
                 Effect: Allow
                 Action: pricing:GetProducts
