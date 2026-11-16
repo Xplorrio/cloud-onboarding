@@ -3,6 +3,19 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.0.7 (2026-11-16)
+
+### AWS
+
+- Terraform: `enable_cost_optimization_hub` turns on AWS Cost Optimization Hub
+  in the account (`aws_costoptimizationhub_enrollment_status`), and
+  `cost_optimization_hub_include_member_accounts` enrolls every member account
+  when run in the management account. Both default to `false`, since this
+  changes an account setting rather than creating an Xplorr resource. The
+  organization example turns both on. CloudFormation has no resource for it,
+  so CloudFormation users still turn it on in the console. New output
+  `cost_optimization_hub_status`.
+
 ## v0.0.6 (2026-11-16)
 
 ### AWS

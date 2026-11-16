@@ -171,3 +171,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_cost_optimization_hub" {
+  description = "Turn on AWS Cost Optimization Hub in this account. Xplorr reads its rightsizing, idle resource and Graviton advice; until it is on, Xplorr shows a Finish AWS setup step. Set it in the management (payer) account of your AWS Organization, or in a standalone account. Free, and it creates the AWS service-linked role the hub needs. Terraform only: no CloudFormation resource exists, so CloudFormation users turn it on in the console. Off by default because it changes an account setting rather than creating an Xplorr resource."
+  type        = bool
+  default     = false
+}
+
+variable "cost_optimization_hub_include_member_accounts" {
+  description = "With enable_cost_optimization_hub, also enroll every member account of the organization. Only valid in the management account."
+  type        = bool
+  default     = false
+}

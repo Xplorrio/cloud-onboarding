@@ -67,3 +67,8 @@ locals {
   # No AWS API or Terraform resource sets Cost Management preferences, so this stays a console step.
   resource_data_step = "For per resource costs (Cost Analysis by resource, tag allocation), sign in to the management account of your AWS Organization (or this account if it is standalone) and open Billing and Cost Management > Cost Management preferences > Cost Explorer. Tick Resource-level data at daily granularity, select EC2-Instances, Elastic Load Balancing, VPC and Route 53, and save. Data appears within 48 hours and covers the last 14 days. AWS turns it off again if nobody uses it for three months."
 }
+
+output "cost_optimization_hub_status" {
+  description = "Active when this module turned on Cost Optimization Hub in this account, otherwise null."
+  value       = var.enable_cost_optimization_hub ? aws_costoptimizationhub_enrollment_status.this[0].status : null
+}

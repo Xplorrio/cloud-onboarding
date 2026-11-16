@@ -59,6 +59,11 @@ module "management" {
   iam_external_id          = var.iam_external_id
   region                   = var.region
   user_assumable_role_arns = local.member_role_arns
+
+  # Turns on Cost Optimization Hub for the whole organization, so Xplorr can
+  # show its recommendations for every member account.
+  enable_cost_optimization_hub                  = true
+  cost_optimization_hub_include_member_accounts = true
 }
 
 module "member_a" {
