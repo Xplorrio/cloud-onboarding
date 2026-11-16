@@ -227,3 +227,26 @@ run "export_kms_keys" {
     error_message = "export_kms_key_arns must grant kms:Decrypt."
   }
 }
+
+run "cost_optimization_hub_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_costoptimizationhub_enrollment_status.this) == 0
+    error_message = "Cost Optimization Hub must be opt-in."
+  }
+}
+
+run "cost_optimization_hub_for_the_organization" {
+  command = plan
+
+  variables {
+    enable_cost_optimization_hub                  = true
+    cost_optimization_hub_include_member_accounts = true
+  }
+
+  assert {
+    condition     = aws_costoptimizationhub_enrollment_status.this[0].include_member_accounts == true
+    error_message = "The hub must enroll member accounts when asked."
+  }
+}

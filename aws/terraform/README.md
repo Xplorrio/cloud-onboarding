@@ -190,7 +190,7 @@ makes (source: `services/cloud-sync-service/src` in the Xplorr app).
 | IdleDetection | `cloudwatch:GetMetricStatistics` | Idle EC2 and unattached EBS findings, and the metric values for the Storage page and network link traffic |
 | StorageAndTraffic | `cloudwatch:ListMetrics`, `rds:DescribeDBInstances` | The Storage page and network link traffic: finds S3 buckets, EFS file systems, Transit Gateway attachments and VPN tunnels that have metrics, and reads RDS allocated storage |
 | Containers | `ecs:ListTasks`, `ecs:DescribeTasks`, `ecs:DescribeClusters`, `ecs:DescribeCapacityProviders` | Which ECS tasks are running now, and each cluster's capacity providers with their Auto Scaling groups. Without them the ECS page counts the tasks seen in the last sync, which can include stopped ones, and groups ECS instances by Auto Scaling group |
-| Recommendations | `cost-optimization-hub:ListRecommendations`, `logs:DescribeLogGroups`, `s3:GetLifecycleConfiguration` | Recommendations beyond idle EC2 and unattached EBS: AWS Cost Optimization Hub advice (rightsizing, idle resources and Graviton for EC2, EBS, Lambda, ECS, RDS and more), CloudWatch log groups with no retention, and large S3 buckets without a lifecycle rule. Cost Optimization Hub returns nothing until it is turned on in the management account |
+| Recommendations | `cost-optimization-hub:ListRecommendations`, `logs:DescribeLogGroups`, `s3:GetLifecycleConfiguration` | Recommendations beyond idle EC2 and unattached EBS: AWS Cost Optimization Hub advice (rightsizing, idle resources and Graviton for EC2, EBS, Lambda, ECS, RDS and more), CloudWatch log groups with no retention, and large S3 buckets without a lifecycle rule. Cost Optimization Hub returns nothing until it is turned on in the management account, which `enable_cost_optimization_hub` does |
 | Pricing | `pricing:GetProducts` | On-demand rates for sizing recommendations |
 | AuditLog (`enable_audit_log`) | `cloudtrail:LookupEvents` | Called on each sync to record whether audit log access works; will be used for anomaly root cause analysis |
 | Export buckets (`export_bucket_arns`) | `s3:ListBucket`, `s3:GetObject` | Optional FOCUS or carbon footprint exports in S3 |
@@ -204,6 +204,18 @@ messages.
 
 Connect the management (payer) account for organization-wide costs and
 credits. A member account only sees its own costs.
+
+To turn on Cost Optimization Hub for the whole organization, set these in
+the module for the management account:
+
+```hcl
+enable_cost_optimization_hub                  = true
+cost_optimization_hub_include_member_accounts = true
+```
+
+This is the only setting the module changes outside IAM. CloudFormation has no
+resource for it, so with CloudFormation turn it on in the console
+(Billing and Cost Management > Cost Optimization Hub > Enable).
 
 ## Inputs
 
@@ -224,6 +236,8 @@ credits. A member account only sees its own costs.
 | `enable_audit_log` | `true` | Grant `cloudtrail:LookupEvents` |
 | `export_bucket_arns` | `[]` | S3 buckets with FOCUS or carbon exports |
 | `export_kms_key_arns` | `[]` | KMS keys of SSE-KMS encrypted export buckets (grants `kms:Decrypt`) |
+| `enable_cost_optimization_hub` | `false` | Turn on AWS Cost Optimization Hub in this account (management or standalone). Changes an account setting, so opt in. Free. Destroying it turns the hub off |
+| `cost_optimization_hub_include_member_accounts` | `false` | With the above, in the management account: enroll every member account too |
 | `max_session_duration` | `3600` | At least 3600: Xplorr requests one hour sessions |
 | `permissions_boundary_arn` | `""` | Optional permissions boundary for the role and user |
 | `tags` | `{}` | Tags for the role (the CloudDrove user module does not apply custom tags to the user) |
@@ -237,6 +251,7 @@ credits. A member account only sees its own costs.
 | `role_arn` | The role ARN; add it to `user_assumable_role_arns` where the user is created |
 | `user_name`, `user_arn` | `customer_principal`: the user whose key you save in Xplorr, and the ARN other accounts must trust |
 | `trust_mode` | The trust mode used |
+| `cost_optimization_hub_status` | `Active` when this module turned on Cost Optimization Hub, otherwise null |
 | `next_steps` | What to do after apply (`terraform output -raw next_steps`) |
 
 ## Tests

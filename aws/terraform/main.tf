@@ -65,3 +65,11 @@ module "iam_role" {
   tags                 = var.tags
 }
 
+
+# Cost Optimization Hub has only a us-east-1 endpoint; the provider reaches it
+# from any region. Destroying this resource turns the hub off again.
+resource "aws_costoptimizationhub_enrollment_status" "this" {
+  count = var.enable_cost_optimization_hub ? 1 : 0
+
+  include_member_accounts = var.cost_optimization_hub_include_member_accounts
+}
