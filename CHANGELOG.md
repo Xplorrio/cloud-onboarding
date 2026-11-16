@@ -3,6 +3,20 @@
 All notable changes to this repository are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## v0.0.6 (2026-11-16)
+
+### AWS
+
+- New `Recommendations` statement with
+  `cost-optimization-hub:ListRecommendations`, `logs:DescribeLogGroups` and
+  `s3:GetLifecycleConfiguration`. Xplorr uses them for recommendations beyond
+  idle EC2 and unattached EBS: AWS Cost Optimization Hub advice for EC2, EBS,
+  Lambda, ECS, RDS and more, CloudWatch log groups with no retention, and
+  large S3 buckets without a lifecycle rule. All three are reads. Cost
+  Optimization Hub itself must be turned on once in the management account
+  (Billing and Cost Management > Cost Optimization Hub); until then it returns
+  nothing and Xplorr says so on Data health.
+
 ## v0.0.5 (2026-11-11)
 
 ### AWS
